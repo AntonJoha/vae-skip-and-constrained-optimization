@@ -61,7 +61,7 @@ class Model(nn.Module):
         self.model = _make_mlp(
             input_dim=config.hidden_dim,
             hidden_dim=config.hidden_dim,
-            output_dim=2 * config.output_dim *config.horizon,
+            output_dim=2 * config.output_dim * config.horizon,
         )
 
         self.rnn = nn.LSTM(
@@ -74,26 +74,17 @@ class Model(nn.Module):
         self.nllLoss = nn.GaussianNLLLoss()
         self.config = config
 
-
-
-
-    
-
     def _to_output_shape(self, x: torch.Tensor) -> torch.Tensor:
 
         print("Output shape:", x.shape)
         x = x.view(x.size(0), self.config.horizon, self.config.output_dim)
         return x.squeeze(-1) if self.config.output_dim == 1 else x
 
-
-
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         print("Input shape:", x.shape)
         x, _ = self.rnn(x)
         x = x[:, -1, :]  # Take the last time step's output
         x = self.model(x)
-
 
         mean, logvar = x.chunk(2, dim=-1)
         return self._to_output_shape(mean), self._to_output_shape(logvar)

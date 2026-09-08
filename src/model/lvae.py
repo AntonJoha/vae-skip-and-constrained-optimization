@@ -99,7 +99,7 @@ class Model(nn.Module):
         self.nllLoss = nn.GaussianNLLLoss()
 
         self.input_encoder = nn.Sequential(
-            nn.Linear(self.input_dim*self.config.seq_len, self.hidden_dim),
+            nn.Linear(self.input_dim * self.config.seq_len, self.hidden_dim),
             nn.GELU(),
             nn.LayerNorm(self.hidden_dim),
         )
@@ -155,9 +155,10 @@ class Model(nn.Module):
                 self.alpha,
             )
             if sample:
-                z = posterior_mean + torch.randn_like(posterior_mean) * (
-                    0.5 * posterior_logvar
-                ).exp()
+                z = (
+                    posterior_mean
+                    + torch.randn_like(posterior_mean) * (0.5 * posterior_logvar).exp()
+                )
             else:
                 z = posterior_mean
             kl_terms.append(
@@ -177,8 +178,10 @@ class Model(nn.Module):
 
         assert top_down_state is not None
         latent_context = top_down_state
-        return latent_context, torch.stack(kl_terms, dim=0).sum(dim=0), torch.stack(
-            latent_samples, dim=0
+        return (
+            latent_context,
+            torch.stack(kl_terms, dim=0).sum(dim=0),
+            torch.stack(latent_samples, dim=0),
         )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -187,7 +190,11 @@ class Model(nn.Module):
         return mean, logvar
 
     def _compute_losses(
-        self, y: torch.Tensor, pred_mean: torch.Tensor, pred_logvar: torch.Tensor, kl: torch.Tensor
+        self,
+        y: torch.Tensor,
+        pred_mean: torch.Tensor,
+        pred_logvar: torch.Tensor,
+        kl: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         target = _normalize_target(y)
         recon_loss = self.nllLoss(
