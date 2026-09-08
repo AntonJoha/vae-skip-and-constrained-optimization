@@ -44,6 +44,7 @@ def evaluate(model, loader: DataLoader) -> float:
     for batch in loader:
         x, y = unpack_batch(batch)
         mean, logvar, *_ = model(x)
+        log.info("Mean shape: %s, Logvar shape: %s, Y shape: %s", mean.shape, logvar.shape, y.shape)
 
         losses.append(float(model.nllLoss(mean, y.squeeze(-1), logvar.exp())))
     model.train()
@@ -52,12 +53,12 @@ def evaluate(model, loader: DataLoader) -> float:
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     model = Model(runtime).to(device)
+    optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
     if runtime.verbose:
         log.info(
             "Parameters: %s",
             sum(p.numel() for p in model.parameters() if p.requires_grad),
         )
-    optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
     return model, optimizer
 
 
@@ -277,6 +278,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--epochs", type=int, default=10, help="Number of training epochs."
     )
+    parser.add_argument(
+        "--horizon", type=int, default=10, help="Forecast horizon."
+        )
 
     return parser.parse_args()
 
