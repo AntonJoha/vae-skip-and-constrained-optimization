@@ -44,12 +44,6 @@ def evaluate(model, loader: DataLoader) -> float:
     for batch in loader:
         x, y = unpack_batch(batch)
         mean, logvar, *_ = model(x)
-        log.info(
-            "Mean shape: %s, Logvar shape: %s, Y shape: %s",
-            mean.shape,
-            logvar.shape,
-            y.shape,
-        )
 
         losses.append(float(model.nllLoss(mean, y.squeeze(-1), logvar.exp())))
     model.train()
@@ -58,6 +52,7 @@ def evaluate(model, loader: DataLoader) -> float:
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     model = Model(runtime).to(device)
+    log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
     optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
     if runtime.verbose:
         log.info(
@@ -119,6 +114,7 @@ def train_model(
             t_recon_loss, t_kl_loss = model.compute_losses(
                 x,
                 y,
+                prior=False
             )
             t_recon_loss_p, t_kl_loss_p = model.compute_losses(
                 x,
@@ -301,6 +297,8 @@ def main() -> None:
         return
 
     train(base_runtime)
+
+
 
 
 if __name__ == "__main__":

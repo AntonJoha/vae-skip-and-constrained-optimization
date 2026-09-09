@@ -3,6 +3,9 @@ from torch import nn
 
 from experiments.util import SeriesConfig
 
+import logging
+log = logging.getLogger(__name__)
+
 TDLGMConfig = SeriesConfig
 
 
@@ -23,7 +26,7 @@ class SequenceAttentionEncoder(nn.Module):
                 d_model=hidden_dim,
                 nhead=_resolve_num_heads(hidden_dim),
                 dim_feedforward=hidden_dim * 4,
-                dropout=0.1,
+                dropout=0.0,
                 activation="gelu",
                 batch_first=True,
                 norm_first=True,
@@ -64,6 +67,19 @@ class Model(nn.Module):
             output_dim=2 * config.output_dim * config.horizon,
         )
 
+        self.posterior_state = SequenceAttentionEncoder(
+            input_dim=config.input_dim,
+            hidden_dim=config.hidden_dim,
+            layers=2,
+            seq_len=config.seq_len + config.horizon,
+        )
+        self.prior_state = SequenceAttentionEncoder(
+            input_dim=config.input_dim,
+            hidden_dim=config.hidden_dim,
+            layers=2,
+            seq_len=config.seq_len,
+            )
+
         self.rnn = nn.LSTM(
             input_size=config.input_dim,
             hidden_size=config.hidden_dim,
@@ -71,44 +87,171 @@ class Model(nn.Module):
             batch_first=True,
         )
 
+
+        self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
+
+        
+        self.downwards_list = self.make_layers(config.hidden_dim, config.hidden_dim, config.layers)
+        self.upwards_list = self.make_layers(config.hidden_dim, config.hidden_dim, config.layers)
+
+
+
         self.nllLoss = nn.GaussianNLLLoss()
         self.config = config
 
+
+        self.lambda_ = 1.0
+        self.lambda_lr = 1e-3
+        self.kl_target = 0.5
+
+
+    def make_layers(self, hidden_dim, output_dim, num_layers):
+        layers = []
+        for _ in range(num_layers):
+            layers.append(_make_mlp(hidden_dim, output_dim, 2 * output_dim))
+        return nn.ModuleList(layers)
+
     def _to_output_shape(self, x: torch.Tensor) -> torch.Tensor:
 
-        print("Output shape:", x.shape)
         x = x.view(x.size(0), self.config.horizon, self.config.output_dim)
         return x.squeeze(-1) if self.config.output_dim == 1 else x
 
+    def _reparametrize(self, mean: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mean + eps * std
+
+    def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
+        # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
+        var1 = torch.exp(logvar1)
+        var2 = torch.exp(logvar2)
+
+        combined_var = 1 / (1 / var1 + 1 / var2)
+        combined_mean = combined_var * (mean1 / var1 + mean2 / var2)
+
+        combined_logvar = torch.log(combined_var)
+        return combined_mean, combined_logvar
+
+    def _latent_pass(self, x, y=None, prior=True) -> torch.Tensor:
+
+
+        posterior_list = []
+        combined_posterior_list = []
+        if y is not None:
+
+
+            y_full = torch.cat([x, y], dim=1)
+            posterior = self.posterior_state(y_full)[:, -1, :]
+
+            for layer in self.downwards_list:
+                posterior = layer(posterior)
+                posterior_list.append(posterior)
+                mean, logvar = posterior.chunk(2, dim=-1)
+                posterior = self._reparametrize(mean, logvar)
+            posterior_list.reverse()
+
+        
+        prior_state = self.prior_state(x)[:, -1, :]
+        prior_list = []
+        for i, layer in enumerate(self.upwards_list):
+            prior_state = layer(prior_state)
+            prior_list.append(prior_state)
+
+
+            if prior:
+                mean, logvar = prior_state.chunk(2, dim=-1)
+                prior_state = self._reparametrize(mean, logvar)
+            else:
+                posterior = posterior_list[i]
+                q_mean, q_logvar = posterior.chunk(2, dim=-1)
+                p_mean, p_logvar = prior_state.chunk(2, dim=-1)
+                mean, logvar = self._multiply_gaussians(q_mean, q_logvar, p_mean, p_logvar)
+
+                combined_posterior_list.append(torch.cat([mean, logvar], dim=-1))
+
+
+                prior_state = self._reparametrize(mean, logvar)
+
+
+
+
+        output = self.to_output(prior_state)
+        mean, logvar = output.chunk(2, dim=-1)
+        pred_mean = self._to_output_shape(mean)
+        pred_logvar = self._to_output_shape(logvar)
+
+        return pred_mean, pred_logvar, prior_list, combined_posterior_list
+
+
+
+
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        print("Input shape:", x.shape)
-        x, _ = self.rnn(x)
-        x = x[:, -1, :]  # Take the last time step's output
-        x = self.model(x)
 
-        mean, logvar = x.chunk(2, dim=-1)
-        return self._to_output_shape(mean), self._to_output_shape(logvar)
+        mean, logvar, *_ = self._latent_pass(x, y=None, prior=True)
 
-    def _compute_losses(self, y, pred_mean, pred_logvar):
-        # Reconstruction loss
-        recon_loss = self.nllLoss(pred_mean, y.squeeze(-1), pred_logvar.exp())
-        return (
-            recon_loss,
-            0.0,
-        )  # We currently have no KL divergence for this simple model, so we return 0.0 for the KL loss.
+        return mean, logvar
 
-    def compute_losses(self, x: torch.Tensor, y: torch.Tensor):
-        mean, logvar = self.forward(x)
-        rec, kl = self._compute_losses(y, mean, logvar)
-        return float(rec), float(kl)
 
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
         self.train()
         optimizer.zero_grad()
-        mean, logvar = self.forward(x)
-        loss = self.nllLoss(mean, y.squeeze(-1), logvar.exp())
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+
+        rec, kl = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=prior_list,
+            combined_posterior_list=combined_posterior_list,
+        )
+        loss = rec + (self.kl_target - kl).pow(2)
+
         loss.backward()
         optimizer.step()
-        return float(loss)
+        with torch.no_grad():
+            temp_lambda = self.lambda_ + self.lambda_lr * (self.kl_target - kl)
+            self.lambda_ = max(0.0, temp_lambda)
+
+        return float(loss.detach())
+
+
+    def _compute_losses(self, y, pred_mean, pred_logvar, prior_list=None, combined_posterior_list=None):
+        # Reconstruction loss
+        recon_loss = self.nllLoss(pred_mean, y.squeeze(-1), pred_logvar.exp())
+        kl_loss = 0.0
+        if prior_list is not None and combined_posterior_list is not None:
+            for prior, posterior in zip(prior_list, combined_posterior_list):
+
+                p_mean, p_logvar = prior.chunk(2, dim=-1)
+                q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+                kl = 0.5 * (
+                    p_logvar - q_logvar
+                    + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
+                      / torch.exp(p_logvar)
+                    - 1
+                )
+
+                kl_loss += kl.sum(dim=-1).mean()
+
+        return recon_loss, kl_loss
+
+    @torch.no_grad()
+    def compute_losses(self, x: torch.Tensor, y: torch.Tensor, prior: bool = True):
+        (
+            pred_mean,
+            pred_logvar,
+            prior_list,
+            combined_posterior_list,
+        ) = self._latent_pass(x, y, prior=prior)
+        rec, kl = self._compute_losses(
+            y,
+            pred_mean,
+            pred_logvar,
+            prior_list=prior_list,
+            combined_posterior_list=combined_posterior_list
+        )
+        return float(rec), float(kl)
