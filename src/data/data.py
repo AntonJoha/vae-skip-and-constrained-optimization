@@ -17,6 +17,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATASET_PATH = Path(__file__).with_name("data").joinpath("shampoo_sales.csv")
 
 
+def _to_float_tensor(values) -> torch.Tensor:
+    if isinstance(values, torch.Tensor):
+        return values.to(dtype=torch.float32)
+    return torch.as_tensor(np.asarray(values), dtype=torch.float32)
+
+
 # Converts the contents in a .tsf file into a dataframe and returns it along with other meta-data of the dataset: frequency, horizon, whether the dataset contains missing values and whether the series have equal lengths
 #
 # Parameters
@@ -170,7 +176,7 @@ def convert_tsf_to_dataframe(
 
 class MaxMinDataset(Dataset):
     def __init__(self, series, context_length, horizon, max_val, min_val):
-        self.series = torch.tensor(series, dtype=torch.float32)
+        self.series = _to_float_tensor(series)
         self.context_length = context_length
         self.horizon = horizon
         max_val = torch.tensor(max_val, dtype=torch.float32)
@@ -195,7 +201,7 @@ class MaxMinDataset(Dataset):
 
 class TimeSeriesDataset(Dataset):
     def __init__(self, series, context_length, horizon, mean, std):
-        self.series = torch.tensor(series, dtype=torch.float32)
+        self.series = _to_float_tensor(series)
         self.context_length = context_length
         self.horizon = horizon
 
