@@ -229,12 +229,12 @@ class Model(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        loss = rec + (self.kl_target - kl).pow(2)
+        loss = rec + self.lambda_*(kl - self.kl_target)
 
         loss.backward()
         optimizer.step()
         with torch.no_grad():
-            temp_lambda = self.lambda_ + self.lambda_lr * (self.kl_target - kl)
+            temp_lambda = self.lambda_ + self.lambda_lr * (kl - self.kl_target)
             self.lambda_ = max(0.0, temp_lambda)
 
         return float(loss.detach())

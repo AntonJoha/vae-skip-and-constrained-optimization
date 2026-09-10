@@ -10,6 +10,14 @@ tune:
 	python -m experiments.main --verbose --tune
 
 
+upper:
+	python -m experiments.main --verbose --upper
+
+upper_tune:
+	python -m experiments.main --verbose --tune --upper
+
+
+
 baseline:
 	python -m experiments.main --verbose --baseline  
 

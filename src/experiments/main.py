@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import Model
+from model import Reg_Model, Upper_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -52,7 +52,10 @@ def evaluate(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    model = Model(runtime).to(device)
+    if runtime.upper:
+        model = Upper_Model(runtime).to(device)
+    else:   
+        model = Reg_Model(runtime).to(device)
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
     optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
     if runtime.verbose:
@@ -301,6 +304,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
     parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning.")
     parser.add_argument("--skip_connection", action="store_true", help="Enable hyperparameter tuning.")
+    parser.add_argument("--upper", action="store_true", help="Enable the upper bound KL Model")
 
     return parser.parse_args()
 
