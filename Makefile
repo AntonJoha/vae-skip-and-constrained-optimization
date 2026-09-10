@@ -8,3 +8,10 @@ main:
 
 tune:
 	python -m experiments.main --verbose --tune
+
+
+baseline:
+	python -m experiments.main --verbose --baseline  
+
+baseline_tune:
+	python -m experiments.main --verbose --baseline --tune

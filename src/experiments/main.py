@@ -290,6 +290,7 @@ def main() -> None:
     base_runtime = SeriesConfig(**vars(args))
 
     configure_logging(args.verbose)
+    log.info("Using %s for training", str(device))
 
     if args.baseline:
         from experiments.baseline import baseline_train
