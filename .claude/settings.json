@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allowlist": []
+  },
+  "hooks": {
+    "onExit": "echo 'Session ended'"
+  }
+}
