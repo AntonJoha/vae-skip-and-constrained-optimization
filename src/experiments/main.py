@@ -20,6 +20,7 @@ from experiments.util import (
     configure_logging,
     save_checkpoint,
     save_config,
+    should_stop_training,
 )
 from model import Model
 
@@ -92,8 +93,14 @@ def train_model(
     before = evaluate(model, val_loader)
     best_val = before
     epochs_without_improvement = 0
+    stopped_due_to_divergence = False
     if runtime.verbose:
         log.info("Validation loss before training: %.5f", before)
+    if reason := should_stop_training(before, before):
+        log.warning("Stopping before training because %s: %.5f", reason, before)
+        if trial is not None:
+            raise TrialPruned()
+        return before, before, best_val
 
     if save_to is not None:
         config_path = save_config(runtime, model, save_to, timestamp)
@@ -126,6 +133,17 @@ def train_model(
             kl_loss_p += t_kl_loss_p
 
         val_loss = evaluate(model, val_loader)
+        if reason := should_stop_training(before, val_loss):
+            log.warning(
+                "Stopping early at epoch %03d because %s: %.5f",
+                epoch + 1,
+                reason,
+                val_loss,
+            )
+            if trial is not None:
+                raise TrialPruned()
+            stopped_due_to_divergence = True
+            break
 
         if runtime.verbose:
             train_batches = max(1, len(train_loader))
@@ -193,7 +211,7 @@ def train_model(
             after,
         )
 
-    if save_to is not None:
+    if save_to is not None and not stopped_due_to_divergence:
         saved_path = save_checkpoint(
             model,
             runtime,
