@@ -102,7 +102,7 @@ class Model(nn.Module):
 
         self.lambda_ = 1.0
         self.lambda_lr = 1e-3
-        self.kl_target = 0.5
+        self.kl_target = self.config.beta 
 
 
     def make_layers(self, hidden_dim, output_dim, num_layers):

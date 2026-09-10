@@ -5,3 +5,6 @@ _: main
 
 main:
 	python -m experiments.main --verbose
+
+tune:
+	python -m experiments.main --verbose --tune

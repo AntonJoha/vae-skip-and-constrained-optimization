@@ -280,6 +280,7 @@ def parse_args() -> argparse.Namespace:
         "--epochs", type=int, default=10, help="Number of training epochs."
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
+    parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning.")
 
     return parser.parse_args()
 
