@@ -18,6 +18,7 @@ from experiments.util import (
     checkpoint_filename,
     save_checkpoint,
     save_config,
+    should_stop_training,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,8 +131,14 @@ def train_model(
     before = evaluate(model, val_loader)
     best_val = before
     epochs_without_improvement = 0
+    stopped_due_to_divergence = False
     if runtime.verbose:
         logger.info("Validation loss before training: %.5f", before)
+    if reason := should_stop_training(before, before):
+        logger.warning("Stopping before training because %s: %.5f", reason, before)
+        if trial is not None:
+            raise TrialPruned()
+        return before, before
 
     if save_to is not None:
         config_path = save_config(runtime, model, save_to, timestamp)
@@ -145,6 +152,17 @@ def train_model(
             epoch_losses.append(model.train_step(x, y, optimizer))
 
         val_loss = evaluate(model, val_loader)
+        if reason := should_stop_training(before, val_loss):
+            logger.warning(
+                "Stopping early at epoch %03d because %s: %.5f",
+                epoch + 1,
+                reason,
+                val_loss,
+            )
+            if trial is not None:
+                raise TrialPruned()
+            stopped_due_to_divergence = True
+            break
 
         if runtime.verbose:
             mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
@@ -203,7 +221,7 @@ def train_model(
             after,
         )
 
-    if save_to is not None:
+    if save_to is not None and not stopped_due_to_divergence:
         saved_path = save_checkpoint(
             model, runtime, save_to / checkpoint_filename("final")
         )
