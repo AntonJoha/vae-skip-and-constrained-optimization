@@ -116,7 +116,7 @@ def train_model(
         epoch_losses = []
         recon_loss = kl_loss = consistency = 0.0
         recon_loss_p = kl_loss_p = consistency_p = 0.0
-        model.set_epoch(epocH)
+        model.set_epoch(epoch)
 
         for batch in train_loader:
             x, y = unpack_batch(batch)

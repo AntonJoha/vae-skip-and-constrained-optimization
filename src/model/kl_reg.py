@@ -98,6 +98,7 @@ class Model(nn.Module):
 
         self.skip_connection = config.skip_connection
         if self.skip_connection:
+            log.info("Using skip connections with %d layers", config.layers)
             self.skip_weights = self.make_skips(config.layers)
 
 
@@ -215,6 +216,11 @@ class Model(nn.Module):
         return mean, logvar
 
 
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
+        self.kl_target = 1/(self.epoch**self.config.beta) if self.epoch > 0 else 1.0 
+        log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
+
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
@@ -233,10 +239,6 @@ class Model(nn.Module):
 
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            temp_lambda = self.lambda_ + self.lambda_lr * (self.kl_target - kl)
-            self.lambda_ = max(0.0, temp_lambda)
-
         return float(loss.detach())
 
 

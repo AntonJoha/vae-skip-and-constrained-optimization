@@ -205,6 +205,12 @@ class Model(nn.Module):
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 
 
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
+        self.kl_target = 1/(self.epoch**self.config.beta) if self.epoch > 0 else 1.0 
+        log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
+
+
 
 
 
