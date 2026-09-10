@@ -236,7 +236,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1,
                 4,
             ),
-            layers=trial.suggest_int("layers", 1, 3),
+            layers=trial.suggest_int("layers", 1, 10),
             beta=trial.suggest_float("beta", 1e-3, 1, log=True),
             alpha=trial.suggest_float("alpha", 1 + 1e-9, 1 + 1.1e-3, log=True),
             learning_rate=trial.suggest_float(
@@ -252,6 +252,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
+            skip_connection=trial.suggest_categorical("skip_connection", [True, False])
         )
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
@@ -299,7 +300,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
     parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning.")
-    parser.add_argument("--skip-connection", action="store_true", help="Enable hyperparameter tuning.")
+    parser.add_argument("--skip_connection", action="store_true", help="Enable hyperparameter tuning.")
 
     return parser.parse_args()
 
