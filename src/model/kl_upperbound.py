@@ -2,7 +2,7 @@ import logging
 
 import torch
 from torch import nn
-
+import random
 from experiments.util import SeriesConfig
 
 log = logging.getLogger(__name__)
@@ -107,8 +107,8 @@ class Model(nn.Module):
 
 
         self.lambda_ = 1.0
-        self.lambda_lr = 1e-3
-        self.kl_target = self.config.beta 
+        self.lambda_lr = 1
+        self.kl_target = 0.5
 
     def make_skips(self, num_layers):
         layers = []
@@ -229,13 +229,15 @@ class Model(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        loss = rec + self.lambda_*(kl - self.kl_target)
-
+        loss = rec + self.lambda_*(torch.relu(kl - self.kl_target))
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            temp_lambda = self.lambda_ + self.lambda_lr * (kl - self.kl_target)
-            self.lambda_ = max(0.0, temp_lambda)
+        #log.info("Update:\n\tLambda portion %s\n\tLambda %s \n\tKL %s ", self.lambda_*(kl - self.kl_target).item(), self.lambda_, kl.item())
+        if random.random() < 0.01:
+            with torch.no_grad():
+                temp_lambda = self.lambda_ + self.lambda_lr * (kl - self.kl_target)
+                
+                self.lambda_ = max(0.0, temp_lambda)
 
         return float(loss.detach())
 
