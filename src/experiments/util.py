@@ -85,6 +85,7 @@ class SeriesConfig(BaselineConfig):
     baseline: bool = False
     use_old: bool = False
     attention: bool = False  ### KEPT HERE FOR BACKWARD COMPATIBILITY, SHOULD BE REMOVED
+    skip_connection: bool = True
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:

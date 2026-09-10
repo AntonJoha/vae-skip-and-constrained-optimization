@@ -299,6 +299,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
     parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning.")
+    parser.add_argument("--skip-connection", action="store_true", help="Enable hyperparameter tuning.")
 
     return parser.parse_args()
 
