@@ -32,6 +32,7 @@ class SequenceAttentionEncoder(nn.Module):
                 norm_first=True,
             ),
             num_layers=layers,
+            enable_nested_tensor=False,
         )
         self.norm = nn.LayerNorm(hidden_dim)
 
