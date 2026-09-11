@@ -53,7 +53,7 @@ class BaselineConfig(DataConfig):
 
     learning_rate: float = 1e-3
 
-    epochs: int = 80
+    epochs: int = 10000
     seed: int = 42
     device: str | None = None
 
@@ -87,6 +87,7 @@ class SeriesConfig(BaselineConfig):
     attention: bool = False  ### KEPT HERE FOR BACKWARD COMPATIBILITY, SHOULD BE REMOVED
     skip_connection: bool = True
     upper: bool = False
+    lower: bool = False
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:

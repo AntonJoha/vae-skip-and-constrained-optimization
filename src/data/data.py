@@ -646,9 +646,10 @@ def get_scale_constant(runtime):
 
     if dataset_path.suffix == ".ped":
         max_val, min_val = ped_get_min_max(dataset_path)
-        diff = max_val - min_val
+        diff = torch.Tensor(max_val - min_val).to(device)
         print("MAX", max_val, "MIN", min_val, "DIFF", diff)
-        return lambda x: x * diff, lambda x: x + 2 * np.log(diff)
+        print("DIFF: ", diff)
+        return lambda x: x * diff, lambda x: x + 2 * torch.log(diff)
 
     else:
         # TODO : Implement scaling for other dataset types
