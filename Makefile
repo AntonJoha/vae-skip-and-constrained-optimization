@@ -4,31 +4,38 @@ _: main
 
 
 main:
-	python -m experiments.main --verbose
+	python -m experiments.main --verbose --horizon 20
+
 
 tune:
-	python -m experiments.main --verbose --tune
+	python -m experiments.main --verbose --tune --horizon 20
+
 
 
 upper:
-	python -m experiments.main --verbose --upper
+	python -m experiments.main --verbose --upper --horizon 20
+
 
 upper_tune:
-	python -m experiments.main --verbose --tune --upper
+	python -m experiments.main --verbose --tune --upper --horizon 20
+
 
 lower:
-	python -m experiments.main --verbose --lower
+	python -m experiments.main --verbose --lower --horizon 20
+
 
 lower_tune:
-	python -m experiments.main --verbose --tune --lower
+	python -m experiments.main --verbose --tune --lower --horizon 20
+
 
 
 
 baseline:
-	python -m experiments.main --verbose --baseline  
+	python -m experiments.main --verbose --baseline  --horizon 20
 
 baseline_tune:
-	python -m experiments.main --verbose --baseline --tune
+	python -m experiments.main --verbose --baseline --tune --horizon 20
+
 
 
 

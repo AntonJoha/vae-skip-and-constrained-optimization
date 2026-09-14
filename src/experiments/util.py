@@ -1,10 +1,9 @@
 import json
 import logging
-import math
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-
+import math
 import torch
 from torch import nn
 
@@ -30,7 +29,7 @@ DATASET_PATH = Path(__file__).with_name("data").joinpath("shampoo_sales.csv")
 
 @dataclass(slots=True)
 class DataConfig:
-    seq_len: int = 50
+    seq_len: int = 12
     batch_size: int = 8
     horizon: int = 1
     shampoo_code: bool = False
@@ -53,7 +52,7 @@ class BaselineConfig(DataConfig):
 
     learning_rate: float = 1e-3
 
-    epochs: int = 10000
+    epochs: int = 80
     seed: int = 42
     device: str | None = None
 
@@ -61,15 +60,15 @@ class BaselineConfig(DataConfig):
 @dataclass(slots=True)
 class SeriesConfig(BaselineConfig):
     # Architecture overrides
-    hidden_dim: int = 32
-    latent_dim: int = 8
-    tdlgm_layers: int = 2
+    hidden_dim: int = 1
+    latent_dim: int = 1
+    tdlgm_layers: int = 1
 
     # Training overrides
     batch_size: int = 64
     learning_rate: float = 1e-3
 
-    beta: float = 1e-3
+    beta: float = 1
     alpha: float = 1e-2
     weight_decay: float = 1e-5
 
@@ -77,7 +76,7 @@ class SeriesConfig(BaselineConfig):
 
     # Training/tuning
     tuning_trials: int = 100
-    tuning_epochs: int = 20
+    tuning_epochs: int = 40
     tune: bool = False
 
     # Misc
@@ -133,14 +132,12 @@ def save_config(
 def checkpoint_filename(suffix: str) -> str:
     return f"checkpoint_epoch{suffix}"
 
-
 def should_stop_training(initial_loss: float, current_loss: float) -> str | None:
     if not math.isfinite(current_loss):
         return "loss became non-finite"
     if current_loss >= 10 * initial_loss:
         return "loss exceeded 10x the initial loss"
     return None
-
 
 def load_checkpoint(
     checkpoint_path: Path,

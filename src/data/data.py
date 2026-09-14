@@ -17,12 +17,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATASET_PATH = Path(__file__).with_name("data").joinpath("shampoo_sales.csv")
 
 
-def _to_float_tensor(values) -> torch.Tensor:
-    if isinstance(values, torch.Tensor):
-        return values.to(dtype=torch.float32)
-    return torch.as_tensor(np.asarray(values), dtype=torch.float32)
-
-
 # Converts the contents in a .tsf file into a dataframe and returns it along with other meta-data of the dataset: frequency, horizon, whether the dataset contains missing values and whether the series have equal lengths
 #
 # Parameters
@@ -46,7 +40,7 @@ def convert_tsf_to_dataframe(
     found_data_section = False
     started_reading_data_section = False
 
-    with open(full_file_path_and_name, encoding="cp1252") as file:
+    with open(full_file_path_and_name, "r", encoding="cp1252") as file:
         for line in file:
             # Strip white space from start/end of line
             line = line.strip()
@@ -174,34 +168,35 @@ def convert_tsf_to_dataframe(
         )
 
 
+
 class MaxMinDataset(Dataset):
     def __init__(self, series, context_length, horizon, max_val, min_val):
-        self.series = _to_float_tensor(series)
+        self.series = torch.tensor(series, dtype=torch.float32)
         self.context_length = context_length
         self.horizon = horizon
         max_val = torch.tensor(max_val, dtype=torch.float32)
         min_val = torch.tensor(min_val, dtype=torch.float32)
         self.diff = max_val - min_val
+        self.min_val = min_val
+        
+
+
 
     def __len__(self):
         return max(0, len(self.series) - self.context_length - self.horizon + 1)
 
     def __getitem__(self, idx):
-
-        x = self.series[idx : idx + self.context_length] / self.diff
-        y = (
-            self.series[
-                idx + self.context_length : idx + self.context_length + self.horizon
-            ]
-            / self.diff
-        )
+        x = (self.series[idx : idx + self.context_length] - self.min_val/self.diff)
+        y = (self.series[idx + self.context_length : idx + self.context_length + self.horizon]-self.min_val)/self.diff
 
         return x, y
 
 
+
+
 class TimeSeriesDataset(Dataset):
     def __init__(self, series, context_length, horizon, mean, std):
-        self.series = _to_float_tensor(series)
+        self.series = torch.tensor(series, dtype=torch.float32)
         self.context_length = context_length
         self.horizon = horizon
 
@@ -262,7 +257,7 @@ def get_csv_dataset(
     if not path.exists():
         raise FileNotFoundError(path)
 
-    df = pd.read_csv(path, delimiter=";")
+    df = pd.read_csv(path, delimiter=",")
 
     if path.name == "AirQualityUCI.csv":
         # Drop the last two columns which are empty
@@ -280,15 +275,14 @@ def get_csv_dataset(
                     df[col].str.replace(",", ".", regex=False),
                     errors="coerce",
                 )
-
+    if path.name == "cleaned_weather.csv":
+        df.drop(["date"], inplace=True, axis=1)
     scaler = StandardScaler()
     df_norm = pd.DataFrame(
         scaler.fit_transform(df),
         columns=df.columns,
         index=df.index,
     )
-    print(df.head())
-    print(df_norm.head())
 
     dataset = WindowedSeriesDataset(
         torch.tensor(df_norm.values, dtype=torch.float32),
@@ -340,19 +334,7 @@ def get_tsf_dataset(
 
     ## normalize data
     all_values = []
-    print(df.head())
 
-    seen = []
-    station_ids = {}
-    for station, obs in zip(df["station_id"], df["obs_or_fcst"], strict=False):
-        if station not in seen:
-            seen.append(station)
-            station_ids[station] = []
-            print("Station_id", station)
-        station_ids[station].append(obs)
-
-    for station in seen:
-        print("Station_id", station, "Obs_or_fcst", station_ids[station])
 
     for row in df["series_value"]:
         all_values.extend(row)
@@ -470,49 +452,70 @@ def get_shampoo_dataloaders(
     return train_loader, val_loader, test_loader
 
 
-def _ped_get_mean_std(train):
 
+def _ped_get_mean_std(train):
+    
     arr = []
 
     for files in [list(train.glob("*.txt"))]:
         for file in files:
-            with open(file) as f:
+            with open(file, "r") as f:
                 for line in f:
                     values = line.split()[2:]  # keep columns 3 and onward
                     arr.append(np.array(values))
 
     arr = np.array(arr, dtype=np.float32)
-    print("arr shape", arr.shape)
     max_val = np.max(arr, axis=0)
     min_val = np.min(arr, axis=0)
 
     return max_val, min_val
 
+from collections import defaultdict
 
-def _ped_get_folder(ped_folder, context_length, horizon, max_val, min_val):
-
+def _ped_get_folder(
+    ped_folder,
+    context_length,
+    horizon,
+    max_val,
+    min_val,
+):
     files = list(ped_folder.glob("*.txt"))
 
-    array_of_datasets = []
+    datasets = []
 
     for file in files:
-        curr = []
-        with open(file) as f:
+
+        trajectories = defaultdict(list)
+
+        with open(file, "r") as f:
             for line in f:
-                values = line.split()[2:]  # keep columns 3 and onward
-                curr.append(np.array(values, dtype=np.float32))
-        array_of_datasets.append(
-            MaxMinDataset(
-                curr,
-                context_length=context_length,
-                horizon=horizon,
-                max_val=max_val,
-                min_val=min_val,
+                frame, ped_id, x, y = map(float, line.split())
+
+                trajectories[int(ped_id)].append(
+                    (frame, x, y)
+                )
+
+        for ped_id, traj in trajectories.items():
+
+            traj.sort(key=lambda t: t[0])
+
+            coords = np.array(
+                [[x, y] for _, x, y in traj],
+                dtype=np.float32,
             )
-        )
 
-    return ConcatDataset(array_of_datasets)
+            if len(coords) >= context_length + horizon:
+                datasets.append(
+                    MaxMinDataset(
+                        coords,
+                        context_length=context_length,
+                        horizon=horizon,
+                        max_val=max_val,
+                        min_val=min_val,
+                    )
+                )
 
+    return ConcatDataset(datasets)
 
 def get_ped_dataset(
     ped_file_path,
@@ -521,8 +524,7 @@ def get_ped_dataset(
     batch_size=32,
     train_fraction=0.8,
     reduced_dataset=None,
-    seed: int = 42,
-):
+    seed: int = 42):
 
     ped_file_path = ped_file_path.with_suffix("")
 
@@ -532,19 +534,35 @@ def get_ped_dataset(
 
     max_val, min_val = _ped_get_mean_std(ped_train)
 
-    ped_train_dataset = _ped_get_folder(
-        ped_train, context_length, horizon, max_val, min_val
-    )
-    pred_test_dataset = _ped_get_folder(
-        ped_test, context_length, horizon, max_val, min_val
-    )
-    ped_val_dataset = _ped_get_folder(
-        ped_val, context_length, horizon, max_val, min_val
-    )
+    train_dataset = _ped_get_folder(ped_train, context_length, horizon,  max_val, min_val)
+    test_dataset = _ped_get_folder(ped_test, context_length, horizon,  max_val, min_val)
+    val_dataset = _ped_get_folder(ped_val, context_length, horizon, max_val, min_val)
 
-    test = DataLoader(pred_test_dataset, batch_size=batch_size, shuffle=False)
-    train = DataLoader(ped_train_dataset, batch_size=batch_size, shuffle=True)
-    val = DataLoader(ped_val_dataset, batch_size=batch_size, shuffle=False)
+    if reduced_dataset is not None:
+        train_size = max(1, int(reduced_dataset * len(train_dataset)))
+        val_size = max(1, int(reduced_dataset * len(val_dataset)))
+        test_size = max(1, int(reduced_dataset * len(test_dataset)))
+        generator = torch.Generator()
+        train_dataset, _ = random_split(
+            train_dataset,
+            [train_size, len(train_dataset) - train_size],
+            generator=generator,
+        )
+        val_dataset, _ = random_split(
+            val_dataset,
+            [val_size, len(val_dataset) - val_size],
+            generator=generator,
+        )
+        test_dataset, _ = random_split(
+            test_dataset,
+            [test_size, len(test_dataset) - test_size],
+            generator=generator,
+        )
+    
+    test = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    train = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
 
     return train, val, test
 
@@ -622,10 +640,10 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
     return train_df, val_df, test_df
 
 
+
 def ped_rescale(series, max_val, min_val):
     diff = max_val - min_val
     return (series - min_val) / diff
-
 
 def ped_get_min_max(path):
 
@@ -640,28 +658,45 @@ def get_scale_constant(runtime):
     """
     Returns lambda that redo the normalization of the data. This is used to scale the output of the model back to the original scale.
     """
-
+    
     dataset_path = Path(get_dataset_names()[0])
     print(f"Loading dataset from {dataset_path}")
 
     if dataset_path.suffix == ".ped":
         max_val, min_val = ped_get_min_max(dataset_path)
-        diff = torch.Tensor(max_val - min_val).to(device)
+        diff = max_val - min_val
+        diff = 1 # FOR DEBUGGING
         print("MAX", max_val, "MIN", min_val, "DIFF", diff)
-        print("DIFF: ", diff)
-        return lambda x: x * diff, lambda x: x + 2 * torch.log(diff)
+        
+        return lambda x: x.cpu() * diff + min_val , lambda x: x.cpu() + 2 * np.log(diff) 
 
     else:
-        # TODO : Implement scaling for other dataset types
-        return lambda x: x
+        #TODO : Implement scaling for other dataset types
+        df = pd.read_csv(dataset_path)
 
+        if dataset_path.name == "cleaned_weather.csv":
+            df.drop(["date"], axis=1, inplace=True)
+
+        scaler = StandardScaler()
+        scaler.fit(df)
+
+        mean = torch.tensor(scaler.mean_, dtype=torch.float32)
+        std = torch.tensor(scaler.scale_, dtype=torch.float32)
+
+        return (
+            lambda x: x.cpu() * std + mean,                    # mean
+            lambda x: x.cpu() + 2 * torch.log(std),            # log-variance
+        )
 
 def get_dataset_names():
     return [
+
         "data/eth.ped",
+        "data/cleaned_weather.csv",
+        "data/pedestrian_counts_dataset.tsf",
+
         "data/covid_deaths_dataset.tsf",
         "data/AirQualityUCI.csv",
-        "data/pedestrian_counts_dataset.tsf",
         "data/solar_10_minutes_dataset.tsf",
         "data/m1_monthly_dataset.tsf",
         "data/traffic_weekly_dataset.tsf",
