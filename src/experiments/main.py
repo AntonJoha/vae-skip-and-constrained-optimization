@@ -51,6 +51,23 @@ def evaluate(model, loader: DataLoader) -> float:
     return sum(losses) / max(1, len(losses))
 
 
+@torch.no_grad()
+def evaluate_kl(model, loader: DataLoader) -> float:
+    model.eval()
+    kl_losses = None
+    count = 0
+    for batch in loader:
+        x, y = unpack_batch(batch)
+        temp = model.get_layered_kl(x, y)
+        if kl_losses is None:
+            kl_losses = temp
+        else:
+            kl_losses += temp
+        count += 1
+    model.train()
+    return kl_losses / max(1, count)
+
+
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     if runtime.upper:
         model = Upper_Model(runtime).to(device)
@@ -138,6 +155,9 @@ def train_model(
             kl_loss_p += t_kl_loss_p
 
         val_loss = evaluate(model, val_loader)
+        layered_kl = evaluate_kl(model, val_loader)
+
+
         if reason := should_stop_training(before, val_loss):
             log.warning(
                 "Stopping early at epoch %03d because %s: %.5f",
@@ -164,6 +184,7 @@ def train_model(
             log.info(" Train loss: %.5f: NLL on val set: %.5f", mean_loss, val_loss)
             log.info(" Posterior: NLL %.5f: kl_loss %.5f:", recon_loss, kl_loss)
             log.info(" Prior: NLL %.5f: kl_loss %.5f:", recon_loss_p, kl_loss_p)
+            log.info(" Layered KL: %s", layered_kl)
 
         if val_loss < best_val:
             best_val = val_loss

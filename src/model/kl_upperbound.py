@@ -269,6 +269,29 @@ class Model(nn.Module):
 
         return recon_loss, kl_loss
 
+
+    @torch.no_grad()
+    def get_layered_kl(self, x, y):
+        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        kl_losses = []
+        for prior, posterior in zip(prior_list, combined_posterior_list):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            kl = 0.5 * (
+                p_logvar - q_logvar
+                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
+                  / torch.exp(p_logvar)
+                - 1
+            )
+            kl_losses.append(kl.sum(dim=-1).mean().item())
+        to_return = torch.tensor(kl_losses, device=x.device)
+        return to_return
+
+
+
+
+
     @torch.no_grad()
     def compute_losses(self, x: torch.Tensor, y: torch.Tensor, prior: bool = True):
         (
