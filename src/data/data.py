@@ -169,32 +169,31 @@ def convert_tsf_to_dataframe(
 
 
 
-class MaxMinDataset(Dataset):
-    def __init__(self, series, context_length, horizon, max_val, min_val):
+class StandardizedPedDataset(Dataset):
+    def __init__(self, series, context_length, horizon, mean, std):
         self.series = torch.tensor(series, dtype=torch.float32)
         self.context_length = context_length
         self.horizon = horizon
-        max_val = torch.tensor(max_val, dtype=torch.float32)
-        min_val = torch.tensor(min_val, dtype=torch.float32)
-        self.diff = (max_val - min_val).clamp_min(1e-6)
-        self.min_val = min_val
-        
-
-
+        mean = torch.tensor(mean, dtype=torch.float32)
+        std = torch.tensor(std, dtype=torch.float32)
+        self.std = std.clamp_min(1e-6)
+        self.mean = mean
 
     def __len__(self):
         return max(0, len(self.series) - self.context_length - self.horizon + 1)
 
     def __getitem__(self, idx):
-        x = (
-            self.series[idx : idx + self.context_length] - self.min_val
-        ) / self.diff
+        x = (self.series[idx : idx + self.context_length] - self.mean) / self.std
         y = (
             self.series[idx + self.context_length : idx + self.context_length + self.horizon]
-            - self.min_val
-        ) / self.diff
+            - self.mean
+        ) / self.std
 
         return x, y
+
+
+# Backward-compatible alias for older imports.
+MaxMinDataset = StandardizedPedDataset
 
 
 
@@ -470,10 +469,10 @@ def _ped_get_mean_std(train):
                     arr.append(np.array(values))
 
     arr = np.array(arr, dtype=np.float32)
-    max_val = np.max(arr, axis=0)
-    min_val = np.min(arr, axis=0)
+    mean = np.mean(arr, axis=0)
+    std = np.std(arr, axis=0)
 
-    return max_val, min_val
+    return mean, std
 
 from collections import defaultdict
 
@@ -481,8 +480,8 @@ def _ped_get_folder(
     ped_folder,
     context_length,
     horizon,
-    max_val,
-    min_val,
+    mean,
+    std,
 ):
     files = list(ped_folder.glob("*.txt"))
 
@@ -511,12 +510,12 @@ def _ped_get_folder(
 
             if len(coords) >= context_length + horizon:
                 datasets.append(
-                    MaxMinDataset(
+                    StandardizedPedDataset(
                         coords,
                         context_length=context_length,
                         horizon=horizon,
-                        max_val=max_val,
-                        min_val=min_val,
+                        mean=mean,
+                        std=std,
                     )
                 )
 
@@ -537,11 +536,11 @@ def get_ped_dataset(
     ped_test = ped_file_path / "test"
     ped_val = ped_file_path / "val"
 
-    max_val, min_val = _ped_get_mean_std(ped_train)
+    mean, std = _ped_get_mean_std(ped_train)
 
-    train_dataset = _ped_get_folder(ped_train, context_length, horizon,  max_val, min_val)
-    test_dataset = _ped_get_folder(ped_test, context_length, horizon,  max_val, min_val)
-    val_dataset = _ped_get_folder(ped_val, context_length, horizon, max_val, min_val)
+    train_dataset = _ped_get_folder(ped_train, context_length, horizon, mean, std)
+    test_dataset = _ped_get_folder(ped_test, context_length, horizon, mean, std)
+    val_dataset = _ped_get_folder(ped_val, context_length, horizon, mean, std)
 
     if reduced_dataset is not None:
         train_size = max(1, int(reduced_dataset * len(train_dataset)))
@@ -646,17 +645,20 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
 
 
 
-def ped_rescale(series, max_val, min_val):
-    diff = max_val - min_val
-    return (series - min_val) / diff
+def ped_rescale(series, mean, std):
+    return (series - mean) / std
 
 def ped_get_min_max(path):
+    return ped_get_mean_std(path)
+
+
+def ped_get_mean_std(path):
 
     ped_file_path = path.with_suffix("")
     ped_train = ped_file_path / "train"
-    max_val, min_val = _ped_get_mean_std(ped_train)
+    mean, std = _ped_get_mean_std(ped_train)
 
-    return max_val, min_val
+    return mean, std
 
 
 def get_scale_constant(runtime):
@@ -668,11 +670,12 @@ def get_scale_constant(runtime):
     print(f"Loading dataset from {dataset_path}")
 
     if dataset_path.suffix == ".ped":
-        max_val, min_val = ped_get_min_max(dataset_path)
-        diff = np.maximum(max_val - min_val, 1e-6)
-        print("MAX", max_val, "MIN", min_val, "DIFF", diff)
+        mean, std = ped_get_mean_std(dataset_path)
+        mean = torch.tensor(mean, dtype=torch.float32)
+        std = torch.tensor(std, dtype=torch.float32).clamp_min(1e-6)
+        print("MEAN", mean, "STD", std)
 
-        return lambda x: x.cpu() * diff + min_val, lambda x: x.cpu() + 2 * np.log(diff)
+        return lambda x: x.cpu() * std + mean, lambda x: x.cpu() + 2 * torch.log(std)
 
     else:
         #TODO : Implement scaling for other dataset types
