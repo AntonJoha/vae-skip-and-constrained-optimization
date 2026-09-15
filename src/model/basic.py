@@ -172,6 +172,8 @@ class Model(nn.Module):
             batch_first=True,
             )
 
+        self.module = _make_mlp(config.hidden_dim, config.hidden_dim, config.hidden_dim*2)
+
         self.linear = nn.Linear(
             config.hidden_dim, config.output_dim * 2 * config.horizon
         )
@@ -209,6 +211,7 @@ class Model(nn.Module):
 
 
 
+
     def compute_losses(self, x, y, prior=True):
         mean, logvar = self(x)
         loss = self.nllLoss(mean, self._target(y, mean), logvar.exp())
@@ -221,12 +224,12 @@ class Model(nn.Module):
 
 
         x, _ = self.prior_state(x)
+        
+        mean, logvar = self.module(x)[:, -1, :].chunk(2, dim=-1)
 
-        if y is not None:
-            y_full = torch.cat([x, y], dim=1)
-            post, _ = self.posterior_state(y_full)
+        z = mean + torch.exp(0.5 * logvar) * torch.randn_like(mean)
 
-        x = self.linear(x)[:, -1, :]
+        x = self.linear(z)
 
         mean = self._to_output_shape(
             x[:, : self.config.output_dim * self.config.horizon]
