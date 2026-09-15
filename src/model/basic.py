@@ -190,7 +190,7 @@ class Model(nn.Module):
         return x.squeeze(-1) if self.config.output_dim == 1 else x
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self._latent_pass(x)
+        return self._latent_pass(x, y=None, prior=True)
 
     def _target(self, y: torch.Tensor, mean: torch.Tensor) -> torch.Tensor:
         target = y.squeeze(-1)
