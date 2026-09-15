@@ -270,8 +270,8 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             alpha=trial.suggest_float("alpha", 1 + 1e-9, 1 + 1.1e-3, log=True),
             learning_rate=trial.suggest_float(
                 "learning_rate",
-                1e-5,
-                1e-3,
+                1e-4,
+                5e-2,
                 log=True,
             ),
             batch_size=trial.suggest_categorical("batch_size", [32, 64, 128, 256]),

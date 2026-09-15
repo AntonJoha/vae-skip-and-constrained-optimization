@@ -135,6 +135,7 @@ class Model(nn.Module):
     def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
         # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
         # Implementation using the log-precision (log-tau) trick for numerical stability
+        return mean1, logvar1
         log_tau1, log_tau2 = -logvar1, -logvar2
 
         # log(tau_comb) = log(exp(log_tau1) + exp(log_tau2)) using logsumexp for stability
@@ -150,70 +151,78 @@ class Model(nn.Module):
 
         return combined_mean, combined_logvar
 
-
-    def _latent_pass(self, x, y=None, prior=True) -> torch.Tensor:
-
-
+    def _latent_pass(self, x, y=None, prior=True):
+    
         posterior_list = []
         combined_posterior_list = []
-        print("UPPER")
+    
         if y is not None:
-
-
+    
             y_full = torch.cat([x, y], dim=1)
-            posterior = self.posterior_state(y_full)[:, -1, :]
-
-            for layer in self.downwards_list:
+            posterior = self.posterior_state(y_full).mean(dim=1)
+    
+            for layer in self.upwards_list:
                 posterior = layer(posterior)
                 posterior_list.append(posterior)
+    
                 mean, logvar = posterior.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -20,20)
+                logvar = torch.clamp(logvar, -6.0, 2.0)
+    
                 posterior = self._reparametrize(mean, logvar)
-            posterior_list.reverse()
-
-        
-        prior_state = self.prior_state(x)[:, -1, :]
+            #posterior_list.reverse()
+    
+        prior_state = self.prior_state(x).mean(dim=1)
+    
         prior_list = []
-        for i, layer in enumerate(self.upwards_list):
+    
+        for i, layer in enumerate(self.downwards_list):
+    
             old_state = prior_state
+    
             prior_state = layer(prior_state)
             prior_list.append(prior_state)
-
-
+    
             if prior:
+    
                 mean, logvar = prior_state.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -20,20)
+                logvar = torch.clamp(logvar, -6.0, 2.0)
+    
                 prior_state = self._reparametrize(mean, logvar)
+    
             else:
+    
                 posterior = posterior_list[i]
+    
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-                q_logvar = torch.clamp(q_logvar, -20,20)
                 p_mean, p_logvar = prior_state.chunk(2, dim=-1)
-
-                p_logvar = torch.clamp(p_logvar, -20,20)
-                mean, logvar = self._multiply_gaussians(q_mean, q_logvar, p_mean, p_logvar)
-
-                logvar = torch.clamp(logvar, -20,20)
-                combined_posterior_list.append(torch.cat([mean, logvar], dim=-1))
-
-
+    
+                q_logvar = torch.clamp(q_logvar, -6.0, 2.0)
+                p_logvar = torch.clamp(p_logvar, -6.0, 2.0)
+    
+                mean, logvar = self._multiply_gaussians(
+                    q_mean, q_logvar,
+                    p_mean, p_logvar,
+                )
+    
+                logvar = torch.clamp(logvar, -6.0, 2.0)
+    
+                combined_posterior_list.append(
+                    torch.cat([mean, logvar], dim=-1)
+                )
+    
                 prior_state = self._reparametrize(mean, logvar)
-
+    
             if self.skip_connection:
-                prior_state += self.skip_weights[i]*old_state
-
-
-
-
+                prior_state = prior_state + self.skip_weights[i] * old_state
+    
         output = self.to_output(prior_state)
+    
         mean, logvar = output.chunk(2, dim=-1)
-
+        logvar = torch.clamp(logvar, -6.0, 2.0)
+    
         pred_mean = self._to_output_shape(mean)
         pred_logvar = self._to_output_shape(logvar)
-
-        pred_logvar = torch.clamp(pred_logvar, -20,20)
-
+    
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 
 
