@@ -81,7 +81,7 @@ class SequenceAttentionEncoderCNN(nn.Module):
         return self.norm(h)SequenceAttentionEncoderCNNSequenceAttentionEncoderCNN#
             posterior = self.posterior_state(y_full).mean(dim=1)#
         prior_state = self.prior_state(x).mean(dim=1)
-        print("!!")
+
 import logging
 
 import torch
@@ -191,9 +191,10 @@ class Model(nn.Module):
         self.config = config
 
 
-        self.lambda_ = 1.0
+        self.lambda_ = 0.0
         self.lambda_lr = 1e-3
-        self.kl_target = self.config.beta 
+        self.kl_penalty = 1.0
+        self.kl_target = float(self.config.beta)
 
     def make_skips(self, num_layers):
         layers = []
@@ -217,28 +218,25 @@ class Model(nn.Module):
         eps = torch.randn_like(std)
         return mean + eps * std
 
-    def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
-        # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
-        # Implementation using the log-precision (log-tau) trick for numerical stability
-        log_tau1, log_tau2 = -logvar1, -logvar2
-
-        # log(tau_comb) = log(exp(log_tau1) + exp(log_tau2)) using logsumexp for stability
-        stacked_log_taus = torch.stack([log_tau1, log_tau2], dim=-1)
-        log_tau_comb = torch.logsumexp(stacked_log_taus, dim=-1)
-        combined_logvar = -log_tau_comb
-
-        # Stabilized weighted average for the mean: mu_comb = (mu1*tau1 + mu2*tau2) / (tau1+tau2)
-        max_log_tau = torch.max(stacked_log_taus, dim=-1).values
-        exp_diff1 = torch.exp(log_tau1 - max_log_tau)
-        exp_diff2 = torch.exp(log_tau2 - max_log_tau)
-        combined_mean = (mean1 * exp_diff1 + mean2 * exp_diff2) / (exp_diff1 + exp_diff2)
-
+    def _multiply_gaussians(
+        self,
+        mean1: torch.Tensor,
+        logvar1: torch.Tensor,
+        mean2: torch.Tensor,
+        logvar2: torch.Tensor,
+    ):
+        precision1 = torch.exp(-logvar1)
+        precision2 = torch.exp(-logvar2)
+        combined_precision = precision1 + precision2
+        combined_mean = (
+            mean1 * precision1 + mean2 * precision2
+        ) / combined_precision
+        combined_logvar = -torch.log(combined_precision)
         return combined_mean, combined_logvar
 
     def _latent_pass(self, x, y=None, prior=True) -> torch.Tensor:
 
 
-        print("HELLO")
         posterior_list = []
         combined_posterior_list = []
         if y is not None:
@@ -313,7 +311,7 @@ class Model(nn.Module):
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-        self.kl_target = 1/(self.epoch**self.config.beta) if self.epoch > 0 else 1.0 
+        self.kl_target = float(self.config.beta)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def train_step(
@@ -331,10 +329,20 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list,
         )
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        loss = rec + (self.kl_target - layered_kl).pow(2).mean()
+        residual = layered_kl - self.kl_target
+        loss = (
+            rec
+            + self.lambda_ * residual.mean()
+            + 0.5 * self.kl_penalty * residual.pow(2).mean()
+        )
 
         loss.backward()
         optimizer.step()
+        with torch.no_grad():
+            self.lambda_ = max(
+                0.0,
+                self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
+            )
         return float(loss.detach())
 
 
