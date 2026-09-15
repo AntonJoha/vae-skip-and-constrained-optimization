@@ -87,6 +87,7 @@ class SeriesConfig(BaselineConfig):
     skip_connection: bool = True
     upper: bool = False
     lower: bool = False
+    basic: bool = False
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:

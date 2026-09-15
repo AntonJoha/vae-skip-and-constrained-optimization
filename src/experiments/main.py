@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import Reg_Model, Upper_Model, Lower_Model
+from model import Reg_Model, Upper_Model, Lower_Model, Basic
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -69,7 +69,10 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    if runtime.upper:
+    if runtime.basic:
+        print("Basic")
+        model = Basic(runtime).to(device)
+    elif runtime.upper:
         print("Upper")
         model = Upper_Model(runtime).to(device)
     elif runtime.lower:
@@ -333,6 +336,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--upper", action="store_true", help="Enable the upper bound KL Model")
     parser.add_argument("--lower", action="store_true", help="Enable the lower bound KL Model")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Fix the learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0.0, help="Fix the weight decay")
+    parser.add_argument("--basic", action="store_true", help="Use the basic model instead of the TDLGM model")
 
 
     return parser.parse_args()

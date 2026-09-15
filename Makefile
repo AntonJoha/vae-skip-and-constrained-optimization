@@ -39,6 +39,11 @@ baseline_tune:
 
 
 
+basic:
+	python -m experiments.main --verbose --basic  --horizon 20
+
+basic_tune:
+	python -m experiments.main --verbose --basic --tune --horizon 20
 
 eval_main:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochfinal_20260914-223055.pt
