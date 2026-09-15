@@ -70,10 +70,13 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     if runtime.upper:
+        print("Upper")
         model = Upper_Model(runtime).to(device)
     elif runtime.lower:
+        print("Lower")
         model = Lower_Model(runtime).to(device)
     else:   
+        print("Reg")
         model = Reg_Model(runtime).to(device)
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
     optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
@@ -262,7 +265,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1,
                 4,
             ),
-            layers=trial.suggest_int("layers", 1, 5),
+            layers=trial.suggest_int("layers", 1, 3),
             beta=trial.suggest_float("beta", 5e-1, 1),
             alpha=trial.suggest_float("alpha", 1 + 1e-9, 1 + 1.1e-3, log=True),
             learning_rate=trial.suggest_float(
@@ -329,6 +332,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip_connection", action="store_true", help="Enable hyperparameter tuning.")
     parser.add_argument("--upper", action="store_true", help="Enable the upper bound KL Model")
     parser.add_argument("--lower", action="store_true", help="Enable the lower bound KL Model")
+    parser.add_argument("--learning_rate", type=float, default=0.001, help="Fix the learning rate")
 
 
     return parser.parse_args()

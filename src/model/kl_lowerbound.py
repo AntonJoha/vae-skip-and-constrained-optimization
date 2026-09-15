@@ -155,6 +155,7 @@ class Model(nn.Module):
 
         posterior_list = []
         combined_posterior_list = []
+        print("LOWERBOUND")
         if y is not None:
 
 

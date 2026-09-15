@@ -2,10 +2,13 @@ import logging
 
 import torch
 from torch import nn
-import random
+
 from experiments.util import SeriesConfig
 
+print("LOADING THIS")
+#torch.autograd.set_detect_anomaly(True)
 log = logging.getLogger(__name__)
+
 
 TDLGMConfig = SeriesConfig
 
@@ -16,6 +19,34 @@ def _resolve_num_heads(hidden_dim: int) -> int:
             return candidate
     return 1
 
+
+class SequenceRNNEncoder(nn.Module):
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        layers: int,
+        seq_len: int,  # unused, kept for compatibility
+    ):
+        super().__init__()
+
+        self.rnn = nn.LSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=layers,
+            batch_first=True,
+        )
+
+        #self.norm = nn.LayerNorm(hidden_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        if x.ndim == 2:
+            x = x.unsqueeze(-1)
+
+        output, _ = self.rnn(x)
+
+        return output
 
 class SequenceAttentionEncoder(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int, layers: int, seq_len: int):
@@ -50,6 +81,59 @@ class SequenceAttentionEncoder(nn.Module):
         return self.norm(h)
 
 
+class SequenceAttentionEncoderCNN(nn.Module):
+    def __init__(self, input_dim, hidden_dim, layers, seq_len):
+        super().__init__()
+
+        self.input_proj = nn.Linear(input_dim, hidden_dim)
+
+        self.position_embedding = nn.Parameter(
+            torch.zeros(1, seq_len, hidden_dim)
+        )
+
+        self.encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=hidden_dim,
+                nhead=_resolve_num_heads(hidden_dim),
+                dim_feedforward=hidden_dim * 4,
+                dropout=0.1,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            ),
+            num_layers=layers,
+            enable_nested_tensor=False,
+        )
+
+        self.conv = nn.Sequential(
+            nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1),
+            nn.GELU(),
+        )
+
+        self.norm = nn.LayerNorm(hidden_dim)
+
+    def forward(self, x):
+        if x.ndim == 2:
+            x = x.unsqueeze(-1)
+
+        h = self.input_proj(x)
+        h = h + self.position_embedding[:, : h.size(1)]
+
+        h = self.encoder(h)
+
+        # [B,T,H] -> [B,H,T]
+        h = h.transpose(1, 2)
+
+        h = self.conv(h)
+
+        # [B,H,T] -> [B,T,H]
+        h = h.transpose(1, 2)
+
+        return self.norm(h)
+
+
 def _make_mlp(input_dim: int, hidden_dim: int, output_dim: int) -> nn.Sequential:
     return nn.Sequential(
         nn.Linear(input_dim, hidden_dim),
@@ -69,13 +153,13 @@ class Model(nn.Module):
             output_dim=2 * config.output_dim * config.horizon,
         )
 
-        self.posterior_state = SequenceAttentionEncoder(
+        self.posterior_state = SequenceAttentionEncoderCNN(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
             layers=2,
             seq_len=config.seq_len + config.horizon,
         )
-        self.prior_state = SequenceAttentionEncoder(
+        self.prior_state = SequenceAttentionEncoderCNN(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
             layers=2,
@@ -84,12 +168,6 @@ class Model(nn.Module):
 
         self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
 
-        self.prior_state = SequenceAttentionEncoder(
-            input_dim=config.input_dim,
-            hidden_dim=config.hidden_dim,
-            layers=2,
-            seq_len=config.seq_len,
-            )
 
         self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
 
@@ -98,6 +176,7 @@ class Model(nn.Module):
 
         self.skip_connection = config.skip_connection
         if self.skip_connection:
+            log.info("Using skip connections with %d layers", config.layers)
             self.skip_weights = self.make_skips(config.layers)
 
 
@@ -107,8 +186,8 @@ class Model(nn.Module):
 
 
         self.lambda_ = 1.0
-        self.lambda_lr = 1
-        self.kl_target = 0.5
+        self.lambda_lr = 1e-3
+        self.kl_target = self.config.beta 
 
     def make_skips(self, num_layers):
         layers = []
@@ -128,11 +207,15 @@ class Model(nn.Module):
         return x.squeeze(-1) if self.config.output_dim == 1 else x
 
     def _reparametrize(self, mean: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        #return mean
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mean + eps * std
 
     def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
+        return mean1, logvar1
+        
+        
         # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
         # Implementation using the log-precision (log-tau) trick for numerical stability
         log_tau1, log_tau2 = -logvar1, -logvar2
@@ -150,31 +233,30 @@ class Model(nn.Module):
 
         return combined_mean, combined_logvar
 
-
     def _latent_pass(self, x, y=None, prior=True) -> torch.Tensor:
 
 
         posterior_list = []
         combined_posterior_list = []
-        print("UPPER")
         if y is not None:
 
 
             y_full = torch.cat([x, y], dim=1)
-            posterior = self.posterior_state(y_full)[:, -1, :]
+            #posterior = self.posterior_state(y_full)[:, -1, :]
+            posterior = self.posterior_state(y_full).mean(dim=1)
 
-            for layer in self.downwards_list:
+            for layer in self.upwards_list:
                 posterior = layer(posterior)
                 posterior_list.append(posterior)
                 mean, logvar = posterior.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -20,20)
                 posterior = self._reparametrize(mean, logvar)
-            posterior_list.reverse()
+            #posterior_list.reverse()
 
         
-        prior_state = self.prior_state(x)[:, -1, :]
+        #prior_state = self.prior_state(x)[:, -1, :]
+        prior_state = self.prior_state(x).mean(dim=1)
         prior_list = []
-        for i, layer in enumerate(self.upwards_list):
+        for i, layer in enumerate(self.downwards_list):
             old_state = prior_state
             prior_state = layer(prior_state)
             prior_list.append(prior_state)
@@ -182,19 +264,13 @@ class Model(nn.Module):
 
             if prior:
                 mean, logvar = prior_state.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -20,20)
                 prior_state = self._reparametrize(mean, logvar)
             else:
                 posterior = posterior_list[i]
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-                q_logvar = torch.clamp(q_logvar, -20,20)
                 p_mean, p_logvar = prior_state.chunk(2, dim=-1)
-
-                p_logvar = torch.clamp(p_logvar, -20,20)
                 mean, logvar = self._multiply_gaussians(q_mean, q_logvar, p_mean, p_logvar)
 
-                logvar = torch.clamp(logvar, -20,20)
                 combined_posterior_list.append(torch.cat([mean, logvar], dim=-1))
 
 
@@ -208,20 +284,10 @@ class Model(nn.Module):
 
         output = self.to_output(prior_state)
         mean, logvar = output.chunk(2, dim=-1)
-
         pred_mean = self._to_output_shape(mean)
         pred_logvar = self._to_output_shape(logvar)
 
-        pred_logvar = torch.clamp(pred_logvar, -20,20)
-
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
-
-
-
-    def set_epoch(self, epoch: int):
-        self.epoch = epoch
-        self.kl_target = 1/(self.epoch**self.config.beta) if self.epoch > 0 else 1.0 
-        log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
 
 
@@ -233,6 +299,11 @@ class Model(nn.Module):
 
         return mean, logvar
 
+
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
+        self.kl_target = 1/(self.epoch**self.config.beta) if self.epoch > 0 else 1.0 
+        log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
@@ -248,16 +319,11 @@ class Model(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        loss = rec + self.lambda_*(torch.relu(kl - self.kl_target))
+        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        loss = rec + (self.kl_target - layered_kl).pow(2).mean()
+
         loss.backward()
         optimizer.step()
-        #log.info("Update:\n\tLambda portion %s\n\tLambda %s \n\tKL %s ", self.lambda_*(kl - self.kl_target).item(), self.lambda_, kl.item())
-        if random.random() < 0.01:
-            with torch.no_grad():
-                temp_lambda = self.lambda_ + self.lambda_lr * (kl - self.kl_target)
-                
-                self.lambda_ = max(0.0, temp_lambda)
-
         return float(loss.detach())
 
 
@@ -282,29 +348,6 @@ class Model(nn.Module):
 
         return recon_loss, kl_loss
 
-
-    @torch.no_grad()
-    def get_layered_kl(self, x, y):
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
-        kl_losses = []
-        for prior, posterior in zip(prior_list, combined_posterior_list):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-            kl = 0.5 * (
-                p_logvar - q_logvar
-                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
-                  / torch.exp(p_logvar)
-                - 1
-            )
-            kl_losses.append(kl.sum(dim=-1).mean().item())
-        to_return = torch.tensor(kl_losses, device=x.device)
-        return to_return
-
-
-
-
-
     @torch.no_grad()
     def compute_losses(self, x: torch.Tensor, y: torch.Tensor, prior: bool = True):
         (
@@ -321,3 +364,29 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list
         )
         return float(rec), float(kl)
+    
+    @torch.no_grad()
+    def get_layered_kl(self, x, y):
+        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        return self._layered_kl(prior_list, combined_posterior_list).detach()
+
+
+
+
+    def _layered_kl(self, prior_list, combined_posterior_list):
+        kl_losses = []
+        for prior, posterior in zip(prior_list, combined_posterior_list):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            kl = 0.5 * (
+                p_logvar - q_logvar
+                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
+                  / torch.exp(p_logvar)
+                - 1
+            )
+            kl_losses.append(kl.sum(dim=-1).mean())
+
+
+
+        return torch.stack(kl_losses)

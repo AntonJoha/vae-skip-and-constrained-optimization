@@ -4,7 +4,7 @@ _: main
 
 
 main:
-	python -m experiments.main --verbose --horizon 20
+	python -m experiments.main --verbose --horizon 20 --learning_rate 0.001
 
 
 tune:
