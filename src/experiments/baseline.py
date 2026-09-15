@@ -191,7 +191,7 @@ def train_model(
                     "Early stopping after %d epochs without val NLL improvement.",
                     early_stopping_patience,
                 )
-            #break
+            break
 
     after = evaluate(model, val_loader)
     if runtime.verbose:

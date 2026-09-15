@@ -150,6 +150,7 @@ class Model(nn.Module):
 
         return combined_mean, combined_logvar
 
+
     def _latent_pass(self, x, y=None, prior=True) -> torch.Tensor:
 
 
@@ -165,6 +166,7 @@ class Model(nn.Module):
                 posterior = layer(posterior)
                 posterior_list.append(posterior)
                 mean, logvar = posterior.chunk(2, dim=-1)
+                logvar = torch.clamp(logvar, -20,20)
                 posterior = self._reparametrize(mean, logvar)
             posterior_list.reverse()
 
@@ -179,13 +181,19 @@ class Model(nn.Module):
 
             if prior:
                 mean, logvar = prior_state.chunk(2, dim=-1)
+                logvar = torch.clamp(logvar, -20,20)
                 prior_state = self._reparametrize(mean, logvar)
             else:
                 posterior = posterior_list[i]
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+                q_logvar = torch.clamp(q_logvar, -20,20)
                 p_mean, p_logvar = prior_state.chunk(2, dim=-1)
+
+                p_logvar = torch.clamp(p_logvar, -20,20)
                 mean, logvar = self._multiply_gaussians(q_mean, q_logvar, p_mean, p_logvar)
 
+                logvar = torch.clamp(logvar, -20,20)
                 combined_posterior_list.append(torch.cat([mean, logvar], dim=-1))
 
 
@@ -199,10 +207,14 @@ class Model(nn.Module):
 
         output = self.to_output(prior_state)
         mean, logvar = output.chunk(2, dim=-1)
+
         pred_mean = self._to_output_shape(mean)
         pred_logvar = self._to_output_shape(logvar)
 
+        pred_logvar = torch.clamp(pred_logvar, -20,20)
+
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
+
 
 
     def set_epoch(self, epoch: int):

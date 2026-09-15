@@ -30,7 +30,7 @@ class SequenceAttentionEncoder(nn.Module):
                 d_model=hidden_dim,
                 nhead=_resolve_num_heads(hidden_dim),
                 dim_feedforward=hidden_dim * 4,
-                dropout=0.0,
+                dropout=0.1,
                 activation="gelu",
                 batch_first=True,
                 norm_first=True,
@@ -451,7 +451,7 @@ class Model(nn.Module):
                 posterior = layer(posterior)
                 posterior_list.append(posterior)
                 mean, logvar = posterior.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -20,20)
+                logvar = torch.clamp(logvar, -10,10)
                 posterior = self._reparametrize(mean, logvar)
             posterior_list.reverse()
 
@@ -466,19 +466,19 @@ class Model(nn.Module):
 
             if prior:
                 mean, logvar = prior_state.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -20,20)
+                logvar = torch.clamp(logvar, -10,10)
                 prior_state = self._reparametrize(mean, logvar)
             else:
                 posterior = posterior_list[i]
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
 
-                q_logvar = torch.clamp(q_logvar, -20,20)
+                q_logvar = torch.clamp(q_logvar, -10,10)
                 p_mean, p_logvar = prior_state.chunk(2, dim=-1)
 
-                p_logvar = torch.clamp(p_logvar, -20,20)
+                p_logvar = torch.clamp(p_logvar, -10,10)
                 mean, logvar = self._multiply_gaussians(q_mean, q_logvar, p_mean, p_logvar)
 
-                logvar = torch.clamp(logvar, -20,20)
+                logvar = torch.clamp(logvar, -10,10)
                 combined_posterior_list.append(torch.cat([mean, logvar], dim=-1))
 
 
@@ -496,7 +496,7 @@ class Model(nn.Module):
         pred_mean = self._to_output_shape(mean)
         pred_logvar = self._to_output_shape(logvar)
 
-        pred_logvar = torch.clamp(pred_logvar, -20,20)
+        pred_logvar = torch.clamp(pred_logvar, -10,10)
 
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 

@@ -30,7 +30,7 @@ DATASET_PATH = Path(__file__).with_name("data").joinpath("shampoo_sales.csv")
 @dataclass(slots=True)
 class DataConfig:
     seq_len: int = 12
-    batch_size: int = 8
+    batch_size: int = 32
     horizon: int = 1
     shampoo_code: bool = False
     reduced_dataset: float | None = None
@@ -60,15 +60,15 @@ class BaselineConfig(DataConfig):
 @dataclass(slots=True)
 class SeriesConfig(BaselineConfig):
     # Architecture overrides
-    hidden_dim: int = 1
-    latent_dim: int = 1
-    tdlgm_layers: int = 1
+    hidden_dim: int = 32
+    latent_dim: int = 128
+    tdlgm_layers: int = 4
 
     # Training overrides
-    batch_size: int = 64
+    batch_size: int = 32
     learning_rate: float = 1e-3
 
-    beta: float = 1
+    beta: float = 0.565
     alpha: float = 1e-2
     weight_decay: float = 1e-5
 
