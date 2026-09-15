@@ -278,6 +278,5 @@ class Model(nn.Module):
         x = x.to(self.device)
         y = y.to(self.device)
         mean, logvar = self(x)
-        return float(self.loss(mean, self._target(y, mean), logvar.exp()))
-
+        return float(self.nllLoss(mean, self._target(y, mean), logvar.exp()))
 
