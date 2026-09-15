@@ -176,7 +176,7 @@ class MaxMinDataset(Dataset):
         self.horizon = horizon
         max_val = torch.tensor(max_val, dtype=torch.float32)
         min_val = torch.tensor(min_val, dtype=torch.float32)
-        self.diff = max_val - min_val
+        self.diff = (max_val - min_val).clamp_min(1e-6)
         self.min_val = min_val
         
 
@@ -186,8 +186,13 @@ class MaxMinDataset(Dataset):
         return max(0, len(self.series) - self.context_length - self.horizon + 1)
 
     def __getitem__(self, idx):
-        x = (self.series[idx : idx + self.context_length] - self.min_val/self.diff)
-        y = (self.series[idx + self.context_length : idx + self.context_length + self.horizon]-self.min_val)/self.diff
+        x = (
+            self.series[idx : idx + self.context_length] - self.min_val
+        ) / self.diff
+        y = (
+            self.series[idx + self.context_length : idx + self.context_length + self.horizon]
+            - self.min_val
+        ) / self.diff
 
         return x, y
 
@@ -664,11 +669,10 @@ def get_scale_constant(runtime):
 
     if dataset_path.suffix == ".ped":
         max_val, min_val = ped_get_min_max(dataset_path)
-        diff = max_val - min_val
-        diff = 1 # FOR DEBUGGING
+        diff = np.maximum(max_val - min_val, 1e-6)
         print("MAX", max_val, "MIN", min_val, "DIFF", diff)
-        
-        return lambda x: x.cpu() * diff + min_val , lambda x: x.cpu() + 2 * np.log(diff) 
+
+        return lambda x: x.cpu() * diff + min_val, lambda x: x.cpu() + 2 * np.log(diff)
 
     else:
         #TODO : Implement scaling for other dataset types
