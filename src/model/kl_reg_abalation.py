@@ -213,7 +213,7 @@ class Model(nn.Module):
         return mean + eps * std
 
     def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
-        return mean1, logvar1
+        #return mean1, logvar1
         
         
         # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
@@ -251,6 +251,8 @@ class Model(nn.Module):
                 logvar = torch.clamp(logvar, -6.0, 2.0)
     
                 posterior = self._reparametrize(mean, logvar)
+            posterior_list.reverse()
+
     
         prior_state = self.prior_state(x).mean(dim=1)
     

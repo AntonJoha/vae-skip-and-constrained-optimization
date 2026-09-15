@@ -698,8 +698,8 @@ def get_scale_constant(runtime):
 def get_dataset_names():
     return [
 
-        "data/eth.ped",
         "data/cleaned_weather.csv",
+        "data/eth.ped",
         "data/pedestrian_counts_dataset.tsf",
 
         "data/covid_deaths_dataset.tsf",

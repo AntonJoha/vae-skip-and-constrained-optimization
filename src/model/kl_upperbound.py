@@ -135,7 +135,7 @@ class Model(nn.Module):
     def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
         # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
         # Implementation using the log-precision (log-tau) trick for numerical stability
-        return mean1, logvar1
+        #return mean1, logvar1
         log_tau1, log_tau2 = -logvar1, -logvar2
 
         # log(tau_comb) = log(exp(log_tau1) + exp(log_tau2)) using logsumexp for stability
@@ -169,7 +169,7 @@ class Model(nn.Module):
                 logvar = torch.clamp(logvar, -6.0, 2.0)
     
                 posterior = self._reparametrize(mean, logvar)
-            #posterior_list.reverse()
+            posterior_list.reverse()
     
         prior_state = self.prior_state(x).mean(dim=1)
     
