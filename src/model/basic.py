@@ -172,7 +172,8 @@ class Model(nn.Module):
             batch_first=True,
             )
 
-        self.module = _make_mlp(config.hidden_dim, config.hidden_dim, config.hidden_dim*2)
+        self.module_p = _make_mlp(config.hidden_dim, config.hidden_dim, config.hidden_dim*2)
+        self.module_q = _make_mlp(config.hidden_dim, config.hidden_dim, config.hidden_dim*2)
 
         self.linear = nn.Linear(
             config.hidden_dim, config.output_dim * 2 * config.horizon
@@ -213,21 +214,35 @@ class Model(nn.Module):
 
 
     def compute_losses(self, x, y, prior=True):
-        mean, logvar = self(x)
+        mean, logvar, mean_p, logvar_p, mean_q, logvar_q = self._latent_pass(x, y, prior=prior)
         loss = self.nllLoss(mean, self._target(y, mean), logvar.exp())
-        return loss, 0 # need kl as well
+        kl_loss = torch.mean(
+            -0.5 * torch.sum(1 + logvar_q - logvar_p - ((mean_q - mean_p) ** 2 + logvar_q.exp()) / logvar_p.exp(), dim=1)
+        )
+        return loss, kl_loss # need kl as well
 
     
     def _latent_pass(self, x, y=None, prior=True):
+        mean_q, logvar_q, mean_p, logvar_p = None, None, None, None # returns none if unused
         if x.ndim == 2:
             x = x.unsqueeze(-1)
 
 
-        x, _ = self.prior_state(x)
-        
-        mean, logvar = self.module(x)[:, -1, :].chunk(2, dim=-1)
+        if y is not None:
+            y_full = torch.cat([x, y], dim=1)
+            posterior, _ = self.posterior_state(y_full)
+            mean_q, logvar_q = self.module_q(posterior)[:, -1, :].chunk(2, dim=-1)
 
-        z = mean + torch.exp(0.5 * logvar) * torch.randn_like(mean)
+        x, _ = self.prior_state(x)
+        x = x[:, -1, :]
+        
+        mean_p, logvar_p = self.module_p(x).chunk(2, dim=-1)
+
+
+        if prior:
+            z = mean_p + torch.exp(0.5 * logvar_p) * torch.randn_like(mean_p)
+        else:
+            z = mean_q + torch.exp(0.5 * logvar_q) * torch.randn_like(mean_q)
 
         x = self.linear(z)
 
@@ -237,7 +252,7 @@ class Model(nn.Module):
         logvar = self._to_output_shape(
             x[:, self.config.output_dim * self.config.horizon :]
         )
-        return mean, logvar
+        return mean, logvar, mean_p, logvar_p, mean_q, logvar_q
 
 
 
@@ -248,8 +263,12 @@ class Model(nn.Module):
         optimizer.zero_grad()
         x = x.to(self.device)
         y = y.to(self.device)
-        mean, logvar = self(x)
+        mean, logvar, mean_p, logvar_p, mean_q, logvar_q = self._latent_pass(x, y, prior=False)
         loss = self.nllLoss(mean, self._target(y, mean), logvar.exp())
+        kl_loss = torch.mean(
+            -0.5 * torch.sum(1 + logvar_q - logvar_p - ((mean_q - mean_p) ** 2 + logvar_q.exp()) / logvar_p.exp(), dim=1)
+        )
+        loss += kl_loss
         loss.backward()
         optimizer.step()
         return float(loss)
