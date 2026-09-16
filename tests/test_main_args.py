@@ -46,6 +46,22 @@ def test_parse_args_basic_enabled():
     assert args.lower is False
 
 
+def test_parse_args_upper_enabled():
+    args = _parse(["--upper"])
+    assert args.upper is True
+    assert args.lower is False
+    assert args.basic is False
+    assert args.vrnn is False
+
+
+def test_parse_args_lower_enabled():
+    args = _parse(["--lower"])
+    assert args.lower is True
+    assert args.upper is False
+    assert args.basic is False
+    assert args.vrnn is False
+
+
 def test_parse_args_rejects_multiple_model_flags():
     with pytest.raises(SystemExit):
         _parse(["--vrnn", "--basic"])
@@ -54,3 +70,8 @@ def test_parse_args_rejects_multiple_model_flags():
 def test_parse_args_rejects_baseline_with_model_flag():
     with pytest.raises(SystemExit):
         _parse(["--baseline", "--vrnn"])
+
+
+def test_parse_args_rejects_upper_with_basic():
+    with pytest.raises(SystemExit):
+        _parse(["--upper", "--basic"])

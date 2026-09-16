@@ -138,10 +138,11 @@ class Model(nn.Module):
         prior_list: list[torch.Tensor],
         posterior_list: list[torch.Tensor],
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        target = self._target(y, pred_mean)
         pred_var = pred_logvar.exp()
         if pred_var.shape != pred_mean.shape and pred_mean.ndim == pred_var.ndim + 1:
             pred_var = pred_var.unsqueeze(-1)
-        recon_loss = self.nll_loss(pred_mean, self._target(y, pred_mean), pred_var)
+        recon_loss = self.nll_loss(pred_mean, target, pred_var)
         kl_loss = self._kl_from_stats(prior_list, posterior_list)
         return recon_loss, kl_loss
 
