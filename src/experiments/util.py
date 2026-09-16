@@ -1,10 +1,9 @@
 import json
 import logging
-import math
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-
+import math
 import torch
 from torch import nn
 
@@ -89,7 +88,6 @@ class SeriesConfig(BaselineConfig):
     upper: bool = False
     lower: bool = False
     basic: bool = False
-    vrnn: bool = False
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:
@@ -135,14 +133,12 @@ def save_config(
 def checkpoint_filename(suffix: str) -> str:
     return f"checkpoint_epoch{suffix}"
 
-
 def should_stop_training(initial_loss: float, current_loss: float) -> str | None:
     if not math.isfinite(current_loss):
         return "loss became non-finite"
     if current_loss >= 10 * initial_loss:
         return "loss exceeded 10x the initial loss"
     return None
-
 
 def load_checkpoint(
     checkpoint_path: Path,

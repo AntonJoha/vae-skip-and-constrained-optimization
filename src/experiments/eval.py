@@ -10,11 +10,11 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from data.data import get_scale_constant, make_dataloaders
+from data.data import make_dataloaders, get_scale_constant
 from experiments.baseline import Baseline
 from experiments.main import unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
-from model import Basic, Lower_Model, Reg_Model, Upper_Model, VRNN_Model
+from model import Reg_Model, Upper_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -71,9 +71,8 @@ def fde_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         mean = mean.unsqueeze(-1)
     if y.ndim == 2:
         y = y.unsqueeze(-1)
-    loss = torch.linalg.vector_norm(mean[:, -1, :] - y[:, -1, :], dim=-1).mean()
+    loss = torch.linalg.vector_norm(mean[:,-1,:] - y[:,-1,:], dim=-1).mean()
     return loss
-
 
 def ade_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     if mean.ndim == 2:
@@ -108,6 +107,9 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses = []
     ade_losses = []
 
+
+
+
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
     xs_scaled = []
@@ -117,7 +119,7 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         x = x.to(device)
         y = y.to(device)
         mean, logvar = model(x)
-
+        
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
         logvar_scaled = scaler[1](logvar)
@@ -138,6 +140,8 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
+
+
 
         xs.append(x)
         means.append(mean)
@@ -163,13 +167,11 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
         "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)
-        / max(1, len(ade_losses_position)),
+        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
         "ade_losses": ade_losses,
         "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
         "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)
-        / max(1, len(fde_losses_position)),
+        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
     }
@@ -189,6 +191,9 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses_position = []
     fde_losses = []
     ade_losses = []
+
+
+
 
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
@@ -221,6 +226,8 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
 
+
+
         xs.append(x)
         means.append(mean)
         logvars.append(logvar)
@@ -245,13 +252,11 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
         "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)
-        / max(1, len(ade_losses_position)),
+        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
         "ade_losses": ade_losses,
         "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
         "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)
-        / max(1, len(fde_losses_position)),
+        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
     }
@@ -278,20 +283,8 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
         break
 
 
-def _evaluate_loaded_model(
-    model: nn.Module,
-    runtime: SeriesConfig,
-    model_state: dict[str, torch.Tensor],
-    scaler,
-    evaluator,
-):
-    model.load_state_dict(model_state)
-    _, _, test_loader = make_dataloaders(runtime)
-    return evaluator(model, test_loader, scaler)
-
-
 def benchmark_model(args, model_path: Path) -> None:
-    runtime, model_config, model_state, model_class = load_checkpoint(model_path)
+    runtime, model_config, model_state, _model_class = load_checkpoint(model_path)
     runtime.reduced_dataset = 1
 
     print(runtime)
@@ -302,58 +295,21 @@ def benchmark_model(args, model_path: Path) -> None:
     scaler = get_scale_constant(runtime)
     _set_input_output_dim(runtime, test_loader)
 
-    model = None
-    evaluator = None
-    if model_class is not None:
-        if model_class == "model.kl_upperbound.Model":
+    res = None
+    if runtime.model_name == "tdlgm":
+        if runtime.upper:
             model = Upper_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif model_class == "model.kl_lowerbound.Model":
-            model = Lower_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif model_class == "model.kl_reg_abalation.Model":
+        else:
             model = Reg_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif model_class == "model.basic.Model":
-            model = Basic(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif model_class == "model.vrnn.Model":
-            model = VRNN_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif model_class == "experiments.baseline.Baseline":
-            model = Baseline(runtime).to(device)
-            evaluator = evaluate_baseline
 
-    if model is None:
-        if runtime.model_name == "tdlgm_upper":
-            model = Upper_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif runtime.model_name == "tdlgm_lower":
-            model = Lower_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif runtime.model_name in {"tdlgm_reg", "tdlgm"}:
-            if runtime.upper:
-                model = Upper_Model(model_config).to(device)
-            elif runtime.lower:
-                model = Lower_Model(model_config).to(device)
-            else:
-                model = Reg_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif runtime.model_name == "basic":
-            model = Basic(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif runtime.model_name == "vrnn":
-            model = VRNN_Model(model_config).to(device)
-            evaluator = evaluate_tdlgm
-        elif runtime.model_name == "baseline":
-            model = Baseline(runtime).to(device)
-            evaluator = evaluate_baseline
-
-    if model is None or evaluator is None:
-        raise ValueError(
-            f"Unsupported model class/name combination: {model_class=} {runtime.model_name=}"
-        )
-    res = _evaluate_loaded_model(model, runtime, model_state, scaler, evaluator)
+        model.load_state_dict(model_state)
+        _, _, test_loader = make_dataloaders(runtime)
+        res = evaluate_tdlgm(model, test_loader, scaler)
+    elif runtime.model_name == "baseline":
+        model = Baseline(runtime).to(device)
+        model.load_state_dict(model_state)
+        _, _, test_loader = make_dataloaders(runtime)
+        res = evaluate_baseline(model, test_loader, scaler)
 
     print(
         f"Model: {runtime.model_name}, Checkpoint: {model_path}, Test Loss: {res['loss']:.5f}, NLL Position Loss: {res['loss_position']}, Test MSE Loss: {res['mse_loss']:.5f} MSE Position Loss: {res['mse_loss_position']}"

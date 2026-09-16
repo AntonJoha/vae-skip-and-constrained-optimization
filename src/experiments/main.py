@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import logging
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -13,7 +14,6 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from data.data import make_dataloaders
-from experiments.cli import parse_args
 from experiments.util import (
     SeriesConfig,
     checkpoint_filename,
@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import Basic, Lower_Model, Reg_Model, Upper_Model, VRNN_Model
+from model import Reg_Model, Upper_Model, Lower_Model, Basic
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -69,25 +69,17 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    if runtime.vrnn:
-        print("VRNN")
-        runtime.model_name = "vrnn"
-        model = VRNN_Model(runtime).to(device)
-    elif runtime.basic:
+    if runtime.basic:
         print("Basic")
-        runtime.model_name = "basic"
         model = Basic(runtime).to(device)
     elif runtime.upper:
         print("Upper")
-        runtime.model_name = "tdlgm_upper"
         model = Upper_Model(runtime).to(device)
     elif runtime.lower:
         print("Lower")
-        runtime.model_name = "tdlgm_lower"
         model = Lower_Model(runtime).to(device)
-    else:
+    else:   
         print("Reg")
-        runtime.model_name = "tdlgm_reg"
         model = Reg_Model(runtime).to(device)
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
     optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
@@ -154,7 +146,11 @@ def train_model(
         for batch in train_loader:
             x, y = unpack_batch(batch)
             epoch_losses.append(model.train_step(x, y, optimizer))
-            t_recon_loss, t_kl_loss = model.compute_losses(x, y, prior=False)
+            t_recon_loss, t_kl_loss = model.compute_losses(
+                x,
+                y,
+                prior=False
+            )
             t_recon_loss_p, t_kl_loss_p = model.compute_losses(
                 x,
                 y,
@@ -166,6 +162,7 @@ def train_model(
 
         val_loss = evaluate(model, val_loader)
         layered_kl = evaluate_kl(model, val_loader)
+
 
         if reason := should_stop_training(before, val_loss):
             log.warning(
@@ -263,7 +260,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             base_runtime,
             hidden_dim=trial.suggest_categorical(
                 "hidden_dim",
-                [32, 64, 128, 256, 512],
+                [ 32, 64, 128, 256, 512],
             ),
             layers=trial.suggest_int(
                 "layers",
@@ -286,7 +283,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
-            skip_connection=trial.suggest_categorical("skip_connection", [True, False]),
+            skip_connection=trial.suggest_categorical("skip_connection", [True, False])
         )
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
@@ -319,6 +316,32 @@ def train(base_runtime: SeriesConfig) -> Path:
     return artifact_dir
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train our model on time series data.")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose logging."
+    )
+    parser.add_argument(
+        "--baseline",
+        action="store_true",
+        help="Run baseline training instead of our model.",
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=1000, help="Number of training epochs."
+    )
+    parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
+    parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning.")
+    parser.add_argument("--skip_connection", action="store_true", help="Enable hyperparameter tuning.")
+    parser.add_argument("--upper", action="store_true", help="Enable the upper bound KL Model")
+    parser.add_argument("--lower", action="store_true", help="Enable the lower bound KL Model")
+    parser.add_argument("--learning_rate", type=float, default=0.001, help="Fix the learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0.0, help="Fix the weight decay")
+    parser.add_argument("--basic", action="store_true", help="Use the basic model instead of the TDLGM model")
+
+
+    return parser.parse_args()
+
+
 def main() -> None:
     args = parse_args()
     base_runtime = SeriesConfig(**vars(args))
@@ -333,6 +356,8 @@ def main() -> None:
         return
 
     train(base_runtime)
+
+
 
 
 if __name__ == "__main__":

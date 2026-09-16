@@ -45,13 +45,6 @@ basic:
 basic_tune:
 	python -m experiments.main --verbose --basic --tune --horizon 20
 
-vrnn:
-	python -m experiments.main --verbose --vrnn --horizon 20
-
-vrnn_tune:
-	python -m experiments.main --verbose --vrnn --tune --horizon 20
-
-
 eval_main:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochfinal_20260914-223055.pt
 eval_upper:
