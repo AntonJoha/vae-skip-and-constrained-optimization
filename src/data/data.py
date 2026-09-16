@@ -282,6 +282,8 @@ def get_csv_dataset(
                 )
     if path.name == "cleaned_weather.csv":
         df.drop(["date"], inplace=True, axis=1)
+    if path.name == "toy_dataset.csv":
+        df.drop(["time"], inplace=True, axis=1)
     scaler = StandardScaler()
     df_norm = pd.DataFrame(
         scaler.fit_transform(df),
@@ -684,6 +686,8 @@ def get_scale_constant(runtime):
 
         if dataset_path.name == "cleaned_weather.csv":
             df.drop(["date"], axis=1, inplace=True)
+        if dataset_path.name == "toy_dataset.csv":
+            df.drop(["time"], axis=1, inplace=True)
 
         scaler = StandardScaler()
         scaler.fit(df)
@@ -698,7 +702,7 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
-
+        "data/toy_dataset.csv",
         "data/AirQualityUCI.csv",
         "data/cleaned_weather.csv",
         "data/eth.ped",
