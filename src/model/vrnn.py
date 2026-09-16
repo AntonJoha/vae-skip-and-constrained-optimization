@@ -64,8 +64,8 @@ class Model(nn.Module):
         target = y.squeeze(-1)
         if mean.shape != target.shape:
             raise ValueError(
-                "prediction and target shapes must match "
-                "(output_dim should equal horizon): "
+                "prediction and target shapes must match after optional "
+                "target squeeze of the last dimension: "
                 f"{mean.shape} != {target.shape}"
             )
         return target
@@ -88,6 +88,18 @@ class Model(nn.Module):
             q_mean, q_logvar = p_mean, p_logvar
             z = self._reparameterize(p_mean, p_logvar)
         else:
+            if y.ndim == 2:
+                y = y.unsqueeze(-1)
+            if y.ndim != x.ndim:
+                raise ValueError(
+                    f"expected y and x to have same rank for posterior encoding: "
+                    f"{y.ndim} != {x.ndim}"
+                )
+            if y.size(-1) != x.size(-1):
+                raise ValueError(
+                    "expected y and x to have matching feature dimensions for posterior "
+                    f"encoding: {y.size(-1)} != {x.size(-1)}"
+                )
             y_full = torch.cat([x, y], dim=1)
             posterior_state, _ = self.posterior_encoder(y_full)
             q_mean, q_logvar = self.posterior_head(posterior_state[:, -1, :]).chunk(
@@ -119,9 +131,10 @@ class Model(nn.Module):
         prior_list: list[torch.Tensor],
         posterior_list: list[torch.Tensor],
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        recon_loss = self.nllLoss(
-            pred_mean, self._target(y, pred_mean), pred_logvar.exp()
-        )
+        pred_var = pred_logvar.exp()
+        if pred_var.shape != pred_mean.shape and pred_mean.ndim == pred_var.ndim + 1:
+            pred_var = pred_var.unsqueeze(-1)
+        recon_loss = self.nllLoss(pred_mean, self._target(y, pred_mean), pred_var)
         kl_loss = self._kl_from_stats(prior_list, posterior_list)
         return recon_loss, kl_loss
 

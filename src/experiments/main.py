@@ -339,10 +339,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip_connection", action="store_true", help="Enable hyperparameter tuning."
     )
-    parser.add_argument(
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument(
         "--upper", action="store_true", help="Enable the upper bound KL Model"
     )
-    parser.add_argument(
+    model_group.add_argument(
         "--lower", action="store_true", help="Enable the lower bound KL Model"
     )
     parser.add_argument(
@@ -351,12 +352,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--weight_decay", type=float, default=0.0, help="Fix the weight decay"
     )
-    parser.add_argument(
+    model_group.add_argument(
         "--basic",
         action="store_true",
         help="Use the basic model instead of the TDLGM model",
     )
-    parser.add_argument("--vrnn", action="store_true", help="Use the VRNN model")
+    model_group.add_argument("--vrnn", action="store_true", help="Use the VRNN model")
 
     return parser.parse_args()
 
