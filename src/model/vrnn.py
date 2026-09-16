@@ -97,7 +97,7 @@ class Model(nn.Module):
 
         if prior or y is None:
             q_mean, q_logvar = p_mean, p_logvar
-            z = self._reparameterize(p_mean, p_logvar)
+            z = p_mean
         else:
             if y.ndim == 2:
                 y = y.unsqueeze(-1)
