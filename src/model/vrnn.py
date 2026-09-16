@@ -36,13 +36,19 @@ class Model(nn.Module):
             num_layers=config.layers,
             batch_first=True,
         )
+        self.posterior_target_encoder = nn.LSTM(
+            input_size=config.output_dim,
+            hidden_size=config.hidden_dim,
+            num_layers=config.layers,
+            batch_first=True,
+        )
         self.prior_head = _make_mlp(
             input_dim=config.hidden_dim,
             hidden_dim=config.hidden_dim,
             output_dim=2 * config.hidden_dim,
         )
         self.posterior_head = _make_mlp(
-            input_dim=config.hidden_dim,
+            input_dim=2 * config.hidden_dim,
             hidden_dim=config.hidden_dim,
             output_dim=2 * config.hidden_dim,
         )
@@ -51,11 +57,6 @@ class Model(nn.Module):
             hidden_dim=config.hidden_dim,
             output_dim=2 * config.output_dim * config.horizon,
         )
-        self.posterior_target_proj: nn.Module
-        if config.output_dim == config.input_dim:
-            self.posterior_target_proj = nn.Identity()
-        else:
-            self.posterior_target_proj = nn.Linear(config.output_dim, config.input_dim)
         self.nll_loss = nn.GaussianNLLLoss()
 
     def set_epoch(self, epoch: int) -> None:
@@ -105,11 +106,12 @@ class Model(nn.Module):
                     f"expected y and x to have same rank for posterior encoding: "
                     f"{y.ndim} != {x.ndim}"
                 )
-            y_full = torch.cat([x, self.posterior_target_proj(y)], dim=1)
-            posterior_state, _ = self.posterior_encoder(y_full)
-            q_mean, q_logvar = self.posterior_head(posterior_state[:, -1, :]).chunk(
-                2, dim=-1
+            context_state, _ = self.posterior_encoder(x)
+            target_state, _ = self.posterior_target_encoder(y)
+            posterior_state = torch.cat(
+                [context_state[:, -1, :], target_state[:, -1, :]], dim=-1
             )
+            q_mean, q_logvar = self.posterior_head(posterior_state).chunk(2, dim=-1)
             z = self._reparameterize(q_mean, q_logvar)
 
         output = self.decoder(z)

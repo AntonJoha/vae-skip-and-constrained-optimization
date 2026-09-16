@@ -49,3 +49,8 @@ def test_parse_args_basic_enabled():
 def test_parse_args_rejects_multiple_model_flags():
     with pytest.raises(SystemExit):
         _parse(["--vrnn", "--basic"])
+
+
+def test_parse_args_rejects_baseline_with_model_flag():
+    with pytest.raises(SystemExit):
+        _parse(["--baseline", "--vrnn"])
