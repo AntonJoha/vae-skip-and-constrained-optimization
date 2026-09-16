@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import Reg_Model, Upper_Model, Lower_Model, Basic
+from model import Reg_Model, Upper_Model, Lower_Model, Basic, VRNN_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -69,17 +69,25 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    if runtime.basic:
+    if runtime.vrnn:
+        print("VRNN")
+        runtime.model_name = "vrnn"
+        model = VRNN_Model(runtime).to(device)
+    elif runtime.basic:
         print("Basic")
+        runtime.model_name = "basic"
         model = Basic(runtime).to(device)
     elif runtime.upper:
         print("Upper")
+        runtime.model_name = "tdlgm"
         model = Upper_Model(runtime).to(device)
     elif runtime.lower:
         print("Lower")
+        runtime.model_name = "tdlgm"
         model = Lower_Model(runtime).to(device)
     else:   
         print("Reg")
+        runtime.model_name = "tdlgm"
         model = Reg_Model(runtime).to(device)
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
     optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
@@ -337,6 +345,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Fix the learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Fix the weight decay")
     parser.add_argument("--basic", action="store_true", help="Use the basic model instead of the TDLGM model")
+    parser.add_argument("--vrnn", action="store_true", help="Use the VRNN model")
 
 
     return parser.parse_args()

@@ -14,7 +14,7 @@ from data.data import make_dataloaders, get_scale_constant
 from experiments.baseline import Baseline
 from experiments.main import unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
-from model import Reg_Model, Upper_Model
+from model import Reg_Model, Upper_Model, Basic, VRNN_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -302,6 +302,16 @@ def benchmark_model(args, model_path: Path) -> None:
         else:
             model = Reg_Model(model_config).to(device)
 
+        model.load_state_dict(model_state)
+        _, _, test_loader = make_dataloaders(runtime)
+        res = evaluate_tdlgm(model, test_loader, scaler)
+    elif runtime.model_name == "basic":
+        model = Basic(model_config).to(device)
+        model.load_state_dict(model_state)
+        _, _, test_loader = make_dataloaders(runtime)
+        res = evaluate_tdlgm(model, test_loader, scaler)
+    elif runtime.model_name == "vrnn":
+        model = VRNN_Model(model_config).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
