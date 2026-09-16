@@ -57,7 +57,7 @@ class Model(nn.Module):
             hidden_dim=config.hidden_dim,
             output_dim=2 * config.output_dim * config.horizon,
         )
-        self.nllLoss = self.nll_loss
+        self.nllLoss = nn.GaussianNLLLoss(reduction="mean")
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
@@ -84,13 +84,6 @@ class Model(nn.Module):
     def _latent_pass(
         self, x: torch.Tensor, y: torch.Tensor | None = None, prior: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor], list[torch.Tensor]]:
-        if x.ndim == 2:
-            x = x.unsqueeze(-1)
-        if x.size(-1) != self.config.input_dim:
-            raise ValueError(
-                "expected x feature dimension to match config.input_dim: "
-                f"{x.size(-1)} != {self.config.input_dim}"
-            )
 
         prior_state, _ = self.prior_encoder(x)
         p_mean, p_logvar = self.prior_head(prior_state[:, -1, :]).chunk(2, dim=-1)
@@ -143,7 +136,7 @@ class Model(nn.Module):
         pred_mean_flat = pred_mean.reshape(pred_mean.size(0), -1)
         target_flat = target.reshape(target.size(0), -1)
         pred_var_flat = pred_var.reshape(pred_var.size(0), -1)
-        recon_loss = self.nll_loss(pred_mean_flat, target_flat, pred_var_flat)
+        recon_loss = self.nllLoss(pred_mean_flat, target_flat, pred_var_flat)
         kl_loss = self._kl_from_stats(prior_list, posterior_list)
         return recon_loss, kl_loss
 
