@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import Reg_Model, Upper_Model, Lower_Model, Basic, VRNN_Model
+from model import Basic, Lower_Model, Reg_Model, Upper_Model, VRNN_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
         print("Lower")
         runtime.model_name = "tdlgm"
         model = Lower_Model(runtime).to(device)
-    else:   
+    else:
         print("Reg")
         runtime.model_name = "tdlgm"
         model = Reg_Model(runtime).to(device)
@@ -154,11 +154,7 @@ def train_model(
         for batch in train_loader:
             x, y = unpack_batch(batch)
             epoch_losses.append(model.train_step(x, y, optimizer))
-            t_recon_loss, t_kl_loss = model.compute_losses(
-                x,
-                y,
-                prior=False
-            )
+            t_recon_loss, t_kl_loss = model.compute_losses(x, y, prior=False)
             t_recon_loss_p, t_kl_loss_p = model.compute_losses(
                 x,
                 y,
@@ -170,7 +166,6 @@ def train_model(
 
         val_loss = evaluate(model, val_loader)
         layered_kl = evaluate_kl(model, val_loader)
-
 
         if reason := should_stop_training(before, val_loss):
             log.warning(
@@ -268,7 +263,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             base_runtime,
             hidden_dim=trial.suggest_categorical(
                 "hidden_dim",
-                [ 32, 64, 128, 256, 512],
+                [32, 64, 128, 256, 512],
             ),
             layers=trial.suggest_int(
                 "layers",
@@ -291,7 +286,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
-            skip_connection=trial.suggest_categorical("skip_connection", [True, False])
+            skip_connection=trial.suggest_categorical("skip_connection", [True, False]),
         )
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
@@ -338,15 +333,30 @@ def parse_args() -> argparse.Namespace:
         "--epochs", type=int, default=1000, help="Number of training epochs."
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
-    parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning.")
-    parser.add_argument("--skip_connection", action="store_true", help="Enable hyperparameter tuning.")
-    parser.add_argument("--upper", action="store_true", help="Enable the upper bound KL Model")
-    parser.add_argument("--lower", action="store_true", help="Enable the lower bound KL Model")
-    parser.add_argument("--learning_rate", type=float, default=0.001, help="Fix the learning rate")
-    parser.add_argument("--weight_decay", type=float, default=0.0, help="Fix the weight decay")
-    parser.add_argument("--basic", action="store_true", help="Use the basic model instead of the TDLGM model")
+    parser.add_argument(
+        "--tune", action="store_true", help="Enable hyperparameter tuning."
+    )
+    parser.add_argument(
+        "--skip_connection", action="store_true", help="Enable hyperparameter tuning."
+    )
+    parser.add_argument(
+        "--upper", action="store_true", help="Enable the upper bound KL Model"
+    )
+    parser.add_argument(
+        "--lower", action="store_true", help="Enable the lower bound KL Model"
+    )
+    parser.add_argument(
+        "--learning_rate", type=float, default=0.001, help="Fix the learning rate"
+    )
+    parser.add_argument(
+        "--weight_decay", type=float, default=0.0, help="Fix the weight decay"
+    )
+    parser.add_argument(
+        "--basic",
+        action="store_true",
+        help="Use the basic model instead of the TDLGM model",
+    )
     parser.add_argument("--vrnn", action="store_true", help="Use the VRNN model")
-
 
     return parser.parse_args()
 
@@ -365,8 +375,6 @@ def main() -> None:
         return
 
     train(base_runtime)
-
-
 
 
 if __name__ == "__main__":

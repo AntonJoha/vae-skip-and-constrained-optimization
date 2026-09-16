@@ -100,9 +100,12 @@ class Model(nn.Module):
         pred_mean = self._to_output_shape(mean)
         pred_logvar = self._to_output_shape(logvar.clamp(min=-6.0, max=6.0))
 
-        return pred_mean, pred_logvar, [torch.cat([p_mean, p_logvar], dim=-1)], [
-            torch.cat([q_mean, q_logvar], dim=-1)
-        ]
+        return (
+            pred_mean,
+            pred_logvar,
+            [torch.cat([p_mean, p_logvar], dim=-1)],
+            [torch.cat([q_mean, q_logvar], dim=-1)],
+        )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         mean, logvar, *_ = self._latent_pass(x, y=None, prior=True)
@@ -116,25 +119,27 @@ class Model(nn.Module):
         prior_list: list[torch.Tensor],
         posterior_list: list[torch.Tensor],
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        recon_loss = self.nllLoss(pred_mean, self._target(y, pred_mean), pred_logvar.exp())
-    kl_loss = self._kl_from_stats(prior_list, posterior_list)
-    return recon_loss, kl_loss
+        recon_loss = self.nllLoss(
+            pred_mean, self._target(y, pred_mean), pred_logvar.exp()
+        )
+        kl_loss = self._kl_from_stats(prior_list, posterior_list)
+        return recon_loss, kl_loss
 
     def _kl_from_stats(
-    self, prior_list: list[torch.Tensor], posterior_list: list[torch.Tensor]
+        self, prior_list: list[torch.Tensor], posterior_list: list[torch.Tensor]
     ) -> torch.Tensor:
-    kl_loss = 0.0
-    for prior, posterior in zip(prior_list, posterior_list):
-        p_mean, p_logvar = prior.chunk(2, dim=-1)
-        q_mean, q_logvar = posterior.chunk(2, dim=-1)
-        kl = 0.5 * (
-            p_logvar
-            - q_logvar
-            + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
-            - 1
-        )
-        kl_loss += kl.sum(dim=-1).mean()
-    return kl_loss
+        kl_loss = 0.0
+        for prior, posterior in zip(prior_list, posterior_list, strict=False):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+            kl = 0.5 * (
+                p_logvar
+                - q_logvar
+                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
+                - 1
+            )
+            kl_loss += kl.sum(dim=-1).mean()
+        return kl_loss
 
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer

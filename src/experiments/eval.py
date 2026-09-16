@@ -10,11 +10,11 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from data.data import make_dataloaders, get_scale_constant
+from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
 from experiments.main import unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
-from model import Reg_Model, Upper_Model, Basic, VRNN_Model
+from model import Basic, Reg_Model, Upper_Model, VRNN_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -71,8 +71,9 @@ def fde_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         mean = mean.unsqueeze(-1)
     if y.ndim == 2:
         y = y.unsqueeze(-1)
-    loss = torch.linalg.vector_norm(mean[:,-1,:] - y[:,-1,:], dim=-1).mean()
+    loss = torch.linalg.vector_norm(mean[:, -1, :] - y[:, -1, :], dim=-1).mean()
     return loss
+
 
 def ade_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     if mean.ndim == 2:
@@ -107,9 +108,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses = []
     ade_losses = []
 
-
-
-
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
     xs_scaled = []
@@ -119,7 +117,7 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         x = x.to(device)
         y = y.to(device)
         mean, logvar = model(x)
-        
+
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
         logvar_scaled = scaler[1](logvar)
@@ -140,8 +138,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-
-
 
         xs.append(x)
         means.append(mean)
@@ -167,11 +163,13 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
         "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
+        "ade_loss_position": sum(ade_losses_position)
+        / max(1, len(ade_losses_position)),
         "ade_losses": ade_losses,
         "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
         "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
+        "fde_loss_position": sum(fde_losses_position)
+        / max(1, len(fde_losses_position)),
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
     }
@@ -191,9 +189,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses_position = []
     fde_losses = []
     ade_losses = []
-
-
-
 
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
@@ -226,8 +221,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
 
-
-
         xs.append(x)
         means.append(mean)
         logvars.append(logvar)
@@ -252,11 +245,13 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
         "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
+        "ade_loss_position": sum(ade_losses_position)
+        / max(1, len(ade_losses_position)),
         "ade_losses": ade_losses,
         "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
         "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
+        "fde_loss_position": sum(fde_losses_position)
+        / max(1, len(fde_losses_position)),
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
     }
