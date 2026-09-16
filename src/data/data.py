@@ -264,7 +264,7 @@ def get_csv_dataset(
     df = pd.read_csv(path, delimiter=",")
 
     if path.name == "AirQualityUCI.csv":
-        df = pd.read_csv(path, dilimiter=";")
+        df = pd.read_csv(path, delimiter=";")
         # Drop the last two columns which are empty
         df = df.iloc[:, :-2]
         # Drop the original 'Date' and 'Time' columns
