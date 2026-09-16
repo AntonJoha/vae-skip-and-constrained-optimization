@@ -57,7 +57,8 @@ class Model(nn.Module):
             hidden_dim=config.hidden_dim,
             output_dim=2 * config.output_dim * config.horizon,
         )
-        self.nll_loss = nn.GaussianNLLLoss()
+self.nll_loss = nn.GaussianNLLLoss()
+        self.nllLoss = self.nll_loss
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
