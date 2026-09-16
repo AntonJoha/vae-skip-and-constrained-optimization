@@ -279,7 +279,7 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 
 def benchmark_model(args, model_path: Path) -> None:
-    runtime, model_config, model_state, _model_class = load_checkpoint(model_path)
+    runtime, model_config, model_state, model_class = load_checkpoint(model_path)
     runtime.reduced_dataset = 1
 
     print(runtime)
@@ -291,17 +291,26 @@ def benchmark_model(args, model_path: Path) -> None:
     _set_input_output_dim(runtime, test_loader)
 
     res = None
-    if runtime.model_name == "tdlgm_upper":
+    if (
+        model_class == "model.kl_upperbound.Model"
+        or runtime.model_name == "tdlgm_upper"
+    ):
         model = Upper_Model(model_config).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
-    elif runtime.model_name == "tdlgm_lower":
+    elif (
+        model_class == "model.kl_lowerbound.Model"
+        or runtime.model_name == "tdlgm_lower"
+    ):
         model = Lower_Model(model_config).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
-    elif runtime.model_name in {"tdlgm_reg", "tdlgm"}:
+    elif model_class == "model.kl_reg_abalation.Model" or runtime.model_name in {
+        "tdlgm_reg",
+        "tdlgm",
+    }:
         if runtime.upper:
             model = Upper_Model(model_config).to(device)
         elif runtime.lower:
@@ -312,21 +321,28 @@ def benchmark_model(args, model_path: Path) -> None:
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
-    elif runtime.model_name == "basic":
+    elif model_class == "model.basic.Model" or runtime.model_name == "basic":
         model = Basic(model_config).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
-    elif runtime.model_name == "vrnn":
+    elif model_class == "model.vrnn.Model" or runtime.model_name == "vrnn":
         model = VRNN_Model(model_config).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
-    elif runtime.model_name == "baseline":
+    elif (
+        model_class == "experiments.baseline.Baseline"
+        or runtime.model_name == "baseline"
+    ):
         model = Baseline(runtime).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_baseline(model, test_loader, scaler)
+    else:
+        raise ValueError(
+            f"Unsupported model class/name combination: {model_class=} {runtime.model_name=}"
+        )
 
     print(
         f"Model: {runtime.model_name}, Checkpoint: {model_path}, Test Loss: {res['loss']:.5f}, NLL Position Loss: {res['loss_position']}, Test MSE Loss: {res['mse_loss']:.5f} MSE Position Loss: {res['mse_loss_position']}"

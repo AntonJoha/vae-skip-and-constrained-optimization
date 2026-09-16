@@ -85,6 +85,11 @@ class Model(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor], list[torch.Tensor]]:
         if x.ndim == 2:
             x = x.unsqueeze(-1)
+        if x.size(-1) != self.config.input_dim:
+            raise ValueError(
+                "expected x feature dimension to match config.input_dim: "
+                f"{x.size(-1)} != {self.config.input_dim}"
+            )
 
         prior_state, _ = self.prior_encoder(x)
         p_mean, p_logvar = self.prior_head(prior_state[:, -1, :]).chunk(2, dim=-1)
