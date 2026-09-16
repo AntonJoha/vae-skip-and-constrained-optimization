@@ -232,11 +232,13 @@ class Model(nn.Module):
             y_full = torch.cat([x, y], dim=1)
             posterior, _ = self.posterior_state(y_full)
             mean_q, logvar_q = self.module_q(posterior)[:, -1, :].chunk(2, dim=-1)
+            logvar_q = torch.clamp(logvar_q, -5, 5)
 
         x, _ = self.prior_state(x)
         x = x[:, -1, :]
         
         mean_p, logvar_p = self.module_p(x).chunk(2, dim=-1)
+        logvar_p = torch.clamp(logvar_p, -5, 5)
 
 
         if prior:
@@ -244,13 +246,18 @@ class Model(nn.Module):
         else:
             z = mean_q + torch.exp(0.5 * logvar_q) * torch.randn_like(mean_q)
 
+
+
+
         x = self.linear(z)
 
         mean = self._to_output_shape(
             x[:, : self.config.output_dim * self.config.horizon]
         )
+        logvar = x[:, self.config.output_dim * self.config.horizon :]
+        
         logvar = self._to_output_shape(
-            x[:, self.config.output_dim * self.config.horizon :]
+            torch.clamp(logvar, -5,5)
         )
         return mean, logvar, mean_p, logvar_p, mean_q, logvar_q
 
@@ -268,7 +275,8 @@ class Model(nn.Module):
         kl_loss = torch.mean(
             -0.5 * torch.sum(1 + logvar_q - logvar_p - ((mean_q - mean_p) ** 2 + logvar_q.exp()) / logvar_p.exp(), dim=1)
         )
-        loss += kl_loss
+        
+        loss += kl_loss*3
         loss.backward()
         optimizer.step()
         return float(loss)

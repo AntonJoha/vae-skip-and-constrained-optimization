@@ -264,6 +264,7 @@ def get_csv_dataset(
     df = pd.read_csv(path, delimiter=",")
 
     if path.name == "AirQualityUCI.csv":
+        df = pd.read_csv(path, dilimiter=";")
         # Drop the last two columns which are empty
         df = df.iloc[:, :-2]
         # Drop the original 'Date' and 'Time' columns
@@ -698,6 +699,7 @@ def get_scale_constant(runtime):
 def get_dataset_names():
     return [
 
+        "data/AirQualityUCI.csv",
         "data/cleaned_weather.csv",
         "data/eth.ped",
         "data/pedestrian_counts_dataset.tsf",
