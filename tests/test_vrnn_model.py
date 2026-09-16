@@ -60,7 +60,7 @@ def test_vrnn_compute_losses_prior_modes():
     assert kl_prior == pytest.approx(0.0, abs=1e-5)
 
 
-def test_vrnn_train_step_and_mismatched_io_dims():
+def test_vrnn_train_step_with_distinct_input_output_dims():
     series_config, vrnn_model = _imports()
     config = series_config(
         input_dim=1,
@@ -78,3 +78,21 @@ def test_vrnn_train_step_and_mismatched_io_dims():
 
     loss = model.train_step(x, y, optimizer)
     assert torch.isfinite(torch.tensor(loss))
+
+
+def test_vrnn_compute_losses_rejects_mismatched_target_shape():
+    series_config, vrnn_model = _imports()
+    config = series_config(
+        input_dim=1,
+        output_dim=1,
+        hidden_dim=8,
+        layers=1,
+        seq_len=4,
+        horizon=2,
+    )
+    model = vrnn_model(config)
+    x = torch.randn(2, config.seq_len, config.input_dim)
+    bad_y = torch.randn(2, config.horizon, 2)
+
+    with pytest.raises(ValueError):
+        model.compute_losses(x, bad_y, prior=False)
