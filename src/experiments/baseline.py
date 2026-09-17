@@ -25,7 +25,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Baseline(nn.Module):
-    def __init__(self, config: BaselineConfig):
+    def __init__(self, config):
         super().__init__()
         self.config = config
         self.lstm = nn.LSTM(
@@ -109,7 +109,7 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 
 def train_model(
-    runtime: BaselineConfig,
+    runtime:BaselineConfig,
     epochs: int | None = None,
     trial: optuna.Trial | None = None,
     save_to: Path | None = None,

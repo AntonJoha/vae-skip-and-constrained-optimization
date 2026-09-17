@@ -33,7 +33,11 @@ lower_tune:
 	python -m experiments.main --verbose --tune --lower --horizon 20
 
 
+vrnn:
+	python -m experiments.main --verbose --vrnn --horizon 20
 
+vrnn_tune:
+	python -m experiments.main --verbose --vrnn --tune --horizon 20
 
 baseline:
 	python -m experiments.main --verbose --baseline  --horizon 20
@@ -44,6 +48,11 @@ baseline_tune:
 
 
 
+basic:
+	python -m experiments.main --verbose --basic  --horizon 20
+
+basic_tune:
+	python -m experiments.main --verbose --basic --tune --horizon 20
 
 eval_main:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260915-110936.pt

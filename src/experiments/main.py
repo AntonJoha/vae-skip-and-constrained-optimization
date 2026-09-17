@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import Reg_Model, Upper_Model, Lower_Model
+from model import Reg_Model, Upper_Model, Lower_Model, Basic, VRNN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -76,7 +76,13 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    if runtime.upper:
+    if runtime.vrnn:
+        print("VRNN")
+        model = VRNN(runtime).to(device)
+    elif runtime.basic:
+        print("Basic")
+        model = Basic(runtime).to(device)
+    elif runtime.upper:
         print("Upper")
         model = Upper_Model(runtime).to(device)
     elif runtime.lower:
@@ -272,29 +278,28 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
     def objective(trial: optuna.Trial) -> float:
         runtime = replace(
             base_runtime,
-            hidden_dim=trial.suggest_categorical("hidden_dim", [32, 64, 128, 256, 512]),
-            latent_dim=trial.suggest_categorical(
-                "latent_dim",
-                [8, 16, 32, 64, 128],
+            hidden_dim=trial.suggest_categorical(
+                "hidden_dim",
+                [ 32, 64, 128, 256, 512],
             ),
-            tdlgm_layers=trial.suggest_int(
-                "tdlgm_layers",
+            layers=trial.suggest_int(
+                "layers",
                 1,
                 4,
             ),
-            layers=trial.suggest_int("layers", 1, 3),
-            beta=trial.suggest_float("beta", 5e-1, 1),
-            alpha=trial.suggest_float("alpha", 1 + 1e-9, 1 + 1.1e-3, log=True),
+            batch_size=trial.suggest_categorical(
+                "batch_size",
+                [32, 64, 128],
+            ),
             learning_rate=trial.suggest_float(
                 "learning_rate",
-                1e-4,
-                5e-2,
+                1e-5,
+                5e-3,
                 log=True,
             ),
-            batch_size=trial.suggest_categorical("batch_size", [32, 64, 128, 256]),
             weight_decay=trial.suggest_float(
                 "weight_decay",
-                1e-8,
+                1e-7,
                 1e-2,
                 log=True,
             ),

@@ -165,7 +165,7 @@ class Model(nn.Module):
                 logvar = torch.clamp(logvar, -6.0, 2.0)
     
                 posterior = self._reparametrize(mean, logvar)
-            #posterior_list.reverse()
+            posterior_list.reverse()
     
         prior_state = self.prior_state(x).mean(dim=1)
     
