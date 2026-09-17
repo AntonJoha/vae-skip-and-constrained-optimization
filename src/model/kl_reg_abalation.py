@@ -5,8 +5,6 @@ from torch import nn
 
 from experiments.util import SeriesConfig
 
-print("LOADING THIS")
-#torch.autograd.set_detect_anomaly(True)
 log = logging.getLogger(__name__)
 
 
@@ -185,9 +183,10 @@ class Model(nn.Module):
         self.config = config
 
 
-        self.lambda_ = 1.0
+        self.lambda_ = 0.0
         self.lambda_lr = 1e-3
-        self.kl_target = self.config.beta 
+        self.kl_penalty = 1.0
+        self.kl_target = float(self.config.beta)
 
     def make_skips(self, num_layers):
         layers = []
@@ -321,7 +320,7 @@ class Model(nn.Module):
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-        self.kl_target = 1/(self.epoch**self.config.beta) if self.epoch > 0 else 1.0 
+        self.kl_target = float(self.config.beta)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def train_step(
@@ -339,10 +338,20 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list,
         )
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        loss = rec + (self.kl_target - layered_kl).pow(2).mean()
+        residual = layered_kl - self.kl_target
+        loss = (
+            rec
+            + self.lambda_ * residual.mean()
+            + 0.5 * self.kl_penalty * residual.pow(2).mean()
+        )
 
         loss.backward()
         optimizer.step()
+        with torch.no_grad():
+            self.lambda_ = max(
+                0.0,
+                self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
+            )
         return float(loss.detach())
 
 

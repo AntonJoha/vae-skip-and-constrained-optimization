@@ -8,16 +8,21 @@ main:
 
 
 tune:
-	python -m experiments.main --verbose --tune --horizon 20
+	python -m experiments.main --verbose --tune --horizon 20 
+
+upper_one:
+	python -m experiments.main --verbose --upper --horizon 20 --learning_rate 0.001122 --latent_dim 64 --hidden_dim 128 --layers 1 --beta 0.6590 --batch_size 128 
+
+
 
 
 
 upper:
-	python -m experiments.main --verbose --upper --horizon 20
+	python -m experiments.main --verbose --upper --horizon 20 --learning_rate 0.001122 --latent_dim 64 --hidden_dim 128 --layers 3 --beta 0.6590 --batch_size 128 --skip_connection
 
 
 upper_tune:
-	python -m experiments.main --verbose --tune --upper --horizon 20
+	python -m experiments.main --verbose --tune --upper --horizon 20 
 
 
 lower:
@@ -50,9 +55,9 @@ basic_tune:
 	python -m experiments.main --verbose --basic --tune --horizon 20
 
 eval_main:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochfinal_20260914-223055.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260915-110936.pt
 eval_upper:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260914-102739.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260916-123033.pt
 
 eval_baseline:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260915-091405.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260916-104431.pt

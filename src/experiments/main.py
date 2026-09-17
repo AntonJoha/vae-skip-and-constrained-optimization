@@ -42,13 +42,20 @@ def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def evaluate(model, loader: DataLoader) -> float:
     model.eval()
     losses = []
+    posterior_losses = []
     for batch in loader:
         x, y = unpack_batch(batch)
         mean, logvar, *_ = model(x)
+        t_recon_loss_q, _ = model.compute_losses(
+                x,
+                y,
+                prior=False
+            )
+        posterior_losses.append(t_recon_loss_q)
 
         losses.append(float(model.nllLoss(mean, y.squeeze(-1), logvar.exp())))
     model.train()
-    return sum(losses) / max(1, len(losses))
+    return sum(losses) / max(1, len(losses)), sum(posterior_losses) / max(1, len(posterior_losses))
 
 
 @torch.no_grad()
@@ -116,12 +123,19 @@ def train_model(
     _set_input_output_dim(runtime, train_loader)
 
     model, optimizer = build_runtime_model(runtime)
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=0.5,
+        patience=5,
+    )
     train_epochs = runtime.epochs if epochs is None else epochs
     checkpoint_interval = max(1, runtime.checkpoint_interval)
     early_stopping_patience = 20
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
-    before = evaluate(model, val_loader)
+    before, _ = evaluate(model, val_loader)
     best_val = before
     epochs_without_improvement = 0
     stopped_due_to_divergence = False
@@ -163,8 +177,9 @@ def train_model(
             recon_loss_p += t_recon_loss_p
             kl_loss_p += t_kl_loss_p
 
-        val_loss = evaluate(model, val_loader)
+        val_loss, val_posterior = evaluate(model, val_loader)
         layered_kl = evaluate_kl(model, val_loader)
+        scheduler.step(val_loss)
 
 
         if reason := should_stop_training(before, val_loss):
@@ -190,7 +205,7 @@ def train_model(
             consistency_p /= train_batches
 
             log.info("========== Epoch %03d =========", epoch + 1)
-            log.info(" Train loss: %.5f: NLL on val set: %.5f", mean_loss, val_loss)
+            log.info(" Train loss: %.5f: NLL on val set: %.5f, Posterior NLL on val: %.5f", mean_loss, val_loss, val_posterior)
             log.info(" Posterior: NLL %.5f: kl_loss %.5f:", recon_loss, kl_loss)
             log.info(" Prior: NLL %.5f: kl_loss %.5f:", recon_loss_p, kl_loss_p)
             log.info(" Layered KL: %s", layered_kl)
@@ -228,7 +243,9 @@ def train_model(
             if runtime.verbose:
                 log.info("Saved checkpoint to %s", saved_path)
 
+        
         if epochs_without_improvement >= early_stopping_patience and trial is None:
+            
             if runtime.verbose:
                 log.info(
                     "Early stopping after %d epochs without val NLL improvement.",
@@ -236,7 +253,7 @@ def train_model(
                 )
             break
 
-    after = evaluate(model, val_loader)
+    after, _ = evaluate(model, val_loader)
     if runtime.verbose:
         log.info("Validation loss after training: %.5f and before %.5f", after, before)
     if trial is None and after >= before:
@@ -338,9 +355,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--upper", action="store_true", help="Enable the upper bound KL Model")
     parser.add_argument("--lower", action="store_true", help="Enable the lower bound KL Model")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Fix the learning rate")
-    parser.add_argument("--weight_decay", type=float, default=0.0, help="Fix the weight decay")
-    parser.add_argument("--basic", action="store_true", help="Use the basic model instead of the TDLGM model")
-    parser.add_argument("--vrnn", action="store_true", help="Use the VRNN model instead of the TDLGM model")
+    parser.add_argument("--reduced_dataset", type=float, default=1.0, help="Reduce the used dataset")
+    parser.add_argument("--latent_dim", type=int, default=16)
+    parser.add_argument("--hidden_dim", type=int, default=16)
+    parser.add_argument("--layers", type=int, default=2)
+    parser.add_argument("--beta", type=float, default=1)
+    parser.add_argument("--batch_size", type=int, default=64)
 
 
     return parser.parse_args()
