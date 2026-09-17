@@ -226,6 +226,8 @@ class Model(nn.Module):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
         self.kl_target = float(self.config.beta)
+        self.kl_target = float(self.config.beta)/((self.epoch+1)**0.5)
+
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
 

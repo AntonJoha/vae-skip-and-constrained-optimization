@@ -264,6 +264,7 @@ def get_csv_dataset(
     df = pd.read_csv(path, delimiter=",")
 
     if path.name == "AirQualityUCI.csv":
+        df = pd.read_csv(path, delimiter=";")
         # Drop the last two columns which are empty
         df = df.iloc[:, :-2]
         # Drop the original 'Date' and 'Time' columns
@@ -684,6 +685,24 @@ def get_scale_constant(runtime):
         if dataset_path.name == "cleaned_weather.csv":
             df.drop(["date"], axis=1, inplace=True)
 
+        if dataset_path.name == "AirQualityUCI.csv":
+            df = pd.read_csv(dataset_path, delimiter=";")
+            # Drop the last two columns which are empty
+            df = df.iloc[:, :-2]
+            # Drop the original 'Date' and 'Time' columns
+            df.drop(["Date", "Time"], axis=1, inplace=True)
+            # Replace -200 values with NaN
+            df.replace(-200, np.nan, inplace=True)
+            # Forward fill NaN values
+            df.ffill(inplace=True)
+            # Replace commas with dots in object columns
+            for col in df.columns:
+                if df[col].dtype == "object":
+                    df[col] = pd.to_numeric(
+                        df[col].str.replace(",", ".", regex=False),
+                        errors="coerce",
+                    )
+
         scaler = StandardScaler()
         scaler.fit(df)
 
@@ -697,14 +716,15 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
-
-        "data/eth.ped",
         "data/cleaned_weather.csv",
+
+        "data/AirQualityUCI.csv",
+        "data/cleaned_weather.csv",
+        "data/solar_10_minutes_dataset.tsf",
+        "data/eth.ped",
         "data/pedestrian_counts_dataset.tsf",
 
         "data/covid_deaths_dataset.tsf",
-        "data/AirQualityUCI.csv",
-        "data/solar_10_minutes_dataset.tsf",
         "data/m1_monthly_dataset.tsf",
         "data/traffic_weekly_dataset.tsf",
     ]
