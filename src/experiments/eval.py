@@ -204,7 +204,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         x, y = unpack_batch(batch)
 
         mean, logvar, *_ = model(x)
-        logvar -= 0.5
 
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
