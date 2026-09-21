@@ -232,6 +232,12 @@ class Model(nn.Module):
 
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
+    def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        return layered_kl.new_full(
+            layered_kl.shape,
+            float(self.kl_target) / max(1, layered_kl.numel()),
+        )
+
 
 
 
@@ -250,15 +256,16 @@ class Model(nn.Module):
         optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
 
-        rec, kl = self._compute_losses(
+        rec, _ = self._compute_losses(
             y,
             mean,
             logvar,
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        residual = kl - self.kl_target
-        loss = rec + self.lambda_ * residual #+ 0.5 * self.kl_penalty * residual.pow(2)
+        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        residual = self._layer_target(layered_kl) - layered_kl
+        loss = rec + self.lambda_ * residual.mean() + 0.5 * self.kl_penalty * residual.pow(2).mean()
         loss.backward()
         optimizer.step()
         with torch.no_grad():
@@ -291,10 +298,7 @@ class Model(nn.Module):
 
         return recon_loss, kl_loss
 
-
-    @torch.no_grad()
-    def get_layered_kl(self, x, y):
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+    def _layered_kl(self, prior_list, combined_posterior_list):
         kl_losses = []
         for prior, posterior in zip(prior_list, combined_posterior_list):
             p_mean, p_logvar = prior.chunk(2, dim=-1)
@@ -306,9 +310,14 @@ class Model(nn.Module):
                   / torch.exp(p_logvar)
                 - 1
             )
-            kl_losses.append(kl.sum(dim=-1).mean().item())
-        to_return = torch.tensor(kl_losses, device=x.device)
-        return to_return
+            kl_losses.append(kl.sum(dim=-1).mean())
+        return torch.stack(kl_losses)
+
+
+    @torch.no_grad()
+    def get_layered_kl(self, x, y):
+        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        return self._layered_kl(prior_list, combined_posterior_list).detach()
 
 
 

@@ -328,6 +328,12 @@ class Model(nn.Module):
             self.kl_target = float(self.config.beta)/((self.epoch+1)**0.5)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
+    def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        return layered_kl.new_full(
+            layered_kl.shape,
+            float(self.kl_target) / max(1, layered_kl.numel()),
+        )
+
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
@@ -335,15 +341,15 @@ class Model(nn.Module):
         optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
 
-        rec, kl = self._compute_losses(
+        rec, _ = self._compute_losses(
             y,
             mean,
             logvar,
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        #layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        residual = kl - self.kl_target
+        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        residual = layered_kl - self._layer_target(layered_kl)
         loss = (
             rec + residual.pow(2).mean() if self.kl_target != 0 else rec + residual.mean()
             #+ self.lambda_ * residual.mean()
