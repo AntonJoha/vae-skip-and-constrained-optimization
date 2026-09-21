@@ -89,6 +89,8 @@ class SeriesConfig(BaselineConfig):
     lower: bool = False
     basic: bool = False
     vrnn: bool = False
+    reverse: bool = False
+    vae_baseline: bool = False
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:

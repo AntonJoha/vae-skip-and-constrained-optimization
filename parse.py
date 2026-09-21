@@ -44,13 +44,13 @@ def parse_training_log(text):
 
 
 # Example usage
-with open("untitled.txt", "r") as f:
+with open("training_2.txt", "r") as f:
     text = f.read()
 
 parsed = parse_training_log(text)
 
 # Write JSON
-with open("training.json", "w") as f:
+with open("training_2.json", "w") as f:
     json.dump(parsed, f, indent=2)
 
 print(json.dumps(parsed[:2], indent=2))

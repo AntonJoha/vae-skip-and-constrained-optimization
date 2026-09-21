@@ -185,7 +185,7 @@ def train_model(
             if runtime.verbose:
                 logger.info("Saved checkpoint to %s", saved_path)
 
-        if epochs_without_improvement >= early_stopping_patience:
+        if epochs_without_improvement >= early_stopping_patience*2:
             if runtime.verbose:
                 logger.info(
                     "Early stopping after %d epochs without val NLL improvement.",

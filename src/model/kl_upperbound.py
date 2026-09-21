@@ -62,6 +62,7 @@ def _make_mlp(input_dim: int, hidden_dim: int, output_dim: int) -> nn.Sequential
 class Model(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.config = config
         self.model = _make_mlp(
             input_dim=config.hidden_dim,
             hidden_dim=config.hidden_dim,
@@ -165,7 +166,8 @@ class Model(nn.Module):
                 logvar = torch.clamp(logvar, -6.0, 2.0)
     
                 posterior = self._reparametrize(mean, logvar)
-            posterior_list.reverse()
+            if self.config.reverse:
+                posterior_list.reverse()
     
         prior_state = self.prior_state(x).mean(dim=1)
     
@@ -256,7 +258,7 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list,
         )
         residual = kl - self.kl_target
-        loss = rec + self.lambda_ * residual + 0.5 * self.kl_penalty * residual.pow(2)
+        loss = rec + self.lambda_ * residual #+ 0.5 * self.kl_penalty * residual.pow(2)
         loss.backward()
         optimizer.step()
         with torch.no_grad():
