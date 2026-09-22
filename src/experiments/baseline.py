@@ -102,7 +102,12 @@ def evaluate(model: nn.Module, loader: DataLoader) -> float:
 
 
 def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
+
     for x, y in loader:
+        if x.ndim == 2:
+            x = x.unsqueeze(-1)
+        if y.ndim == 2:
+            y = y.unsqueeze(-1)
         runtime.input_dim = x.shape[-1]
         runtime.output_dim = y.shape[-1]
         break

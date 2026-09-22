@@ -722,15 +722,15 @@ def get_scale_constant(runtime):
 def get_dataset_names():
     return [
 
+        "data/covid_deaths_dataset.tsf",
+        "data/solar_10_minutes_dataset.tsf",
         "data/eth.ped",
         "data/AirQualityUCI.csv",
         "data/cleaned_weather.csv",
 
         "data/cleaned_weather.csv",
-        "data/solar_10_minutes_dataset.tsf",
         "data/pedestrian_counts_dataset.tsf",
 
-        "data/covid_deaths_dataset.tsf",
         "data/m1_monthly_dataset.tsf",
         "data/traffic_weekly_dataset.tsf",
     ]
