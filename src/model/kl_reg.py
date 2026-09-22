@@ -183,6 +183,7 @@ class Model(nn.Module):
 
         self.nllLoss = nn.GaussianNLLLoss()
         self.config = config
+        self.last_train_metrics = None
 
         self.kl_target = float(self.config.beta)
         self.basic = config.vae_baseline
@@ -336,7 +337,7 @@ class Model(nn.Module):
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
         self.train()
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
 
         rec, _ = self._compute_losses(
@@ -354,7 +355,13 @@ class Model(nn.Module):
 
         loss.backward()
         optimizer.step()
-        
+
+        self.last_train_metrics = {
+            "posterior_recon": float(rec.detach()),
+            "posterior_kl": float(layered_kl.detach().sum()),
+            "layered_kl": layered_kl.detach(),
+        }
+
         return float(loss.detach())
 
 
