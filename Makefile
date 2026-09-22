@@ -2,7 +2,7 @@
 horizon = 50
 
 main:
-	python -m experiments.main --verbose --horizon 50 --learning_rate 0.0001 --hidden_dim 512 --layers 3 --beta 1 --batch_size 64 --latent_dim 16
+	python -m experiments.main --verbose --horizon 50 --learning_rate 0.001 --hidden_dim 64 --layers 1 --beta 0.5 --batch_size 64 --latent_dim 16
 
 tune:
 	python -m experiments.main --verbose --tune --horizon $(horizon)
