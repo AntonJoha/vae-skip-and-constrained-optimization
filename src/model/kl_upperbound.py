@@ -183,7 +183,7 @@ class Model(nn.Module):
             if prior:
     
                 mean, logvar = prior_state.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -6.0, 2.0)
+                logvar = torch.clamp(logvar, -15.0, 2.0)
     
                 prior_state = self._reparametrize(mean, logvar)
     
@@ -194,15 +194,15 @@ class Model(nn.Module):
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
                 p_mean, p_logvar = prior_state.chunk(2, dim=-1)
     
-                q_logvar = torch.clamp(q_logvar, -6.0, 2.0)
-                p_logvar = torch.clamp(p_logvar, -6.0, 2.0)
+                q_logvar = torch.clamp(q_logvar, -15.0, 2.0)
+                p_logvar = torch.clamp(p_logvar, -15.0, 2.0)
     
                 mean, logvar = self._multiply_gaussians(
                     q_mean, q_logvar,
                     p_mean, p_logvar,
                 )
     
-                logvar = torch.clamp(logvar, -6.0, 2.0)
+                logvar = torch.clamp(logvar, -15.0, 2.0)
     
                 combined_posterior_list.append(
                     torch.cat([mean, logvar], dim=-1)
