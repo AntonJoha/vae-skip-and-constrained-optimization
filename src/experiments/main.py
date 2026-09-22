@@ -42,20 +42,28 @@ def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def evaluate(model, loader: DataLoader) -> float:
     model.eval()
     losses = []
-    posterior_losses = []
     for batch in loader:
         x, y = unpack_batch(batch)
-        mean, logvar, *_ = model(x)
-        t_recon_loss_q, _ = model.compute_losses(
-                x,
-                y,
-                prior=False
-            )
-        posterior_losses.append(t_recon_loss_q)
-
-        losses.append(float(model.nllLoss(mean, y.squeeze(-1), logvar.exp())))
+        t_recon_loss, _ = model.compute_losses(x, y)
+        losses.append(t_recon_loss)
     model.train()
-    return sum(losses) / max(1, len(losses)), sum(posterior_losses) / max(1, len(posterior_losses))
+    return sum(losses) / max(1, len(losses))
+
+
+@torch.no_grad()
+def evaluate_posterior(model, loader: DataLoader) -> float:
+    model.eval()
+    losses = []
+    for batch in loader:
+        x, y = unpack_batch(batch)
+        t_recon_loss_q, _ = model.compute_losses(
+            x,
+            y,
+            prior=False,
+        )
+        losses.append(t_recon_loss_q)
+    model.train()
+    return sum(losses) / max(1, len(losses))
 
 
 @torch.no_grad()
@@ -123,6 +131,7 @@ def train_model(
     _set_input_output_dim(runtime, train_loader)
 
     model, optimizer = build_runtime_model(runtime)
+    is_kl_model = isinstance(model, (Reg_Model, Upper_Model))
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
@@ -135,7 +144,7 @@ def train_model(
     early_stopping_patience = 20
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
-    before, _ = evaluate(model, val_loader)
+    before = evaluate(model, val_loader)
     best_val = before
     epochs_without_improvement = 0
     stopped_due_to_divergence = False
@@ -163,22 +172,33 @@ def train_model(
         for batch in train_loader:
             x, y = unpack_batch(batch)
             epoch_losses.append(model.train_step(x, y, optimizer))
-            t_recon_loss, t_kl_loss = model.compute_losses(
-                x,
-                y,
-                prior=False
-            )
-            t_recon_loss_p, t_kl_loss_p = model.compute_losses(
-                x,
-                y,
-            )
-            recon_loss += t_recon_loss
-            kl_loss += t_kl_loss
-            recon_loss_p += t_recon_loss_p
-            kl_loss_p += t_kl_loss_p
+            if runtime.verbose:
+                if is_kl_model:
+                    train_metrics = getattr(model, "last_train_metrics", None)
+                    if train_metrics is None:
+                        t_recon_loss, t_kl_loss = model.compute_losses(
+                            x,
+                            y,
+                            prior=False,
+                        )
+                        layered_kl = model.get_layered_kl(x, y)
+                    else:
+                        t_recon_loss = train_metrics["posterior_recon"]
+                        t_kl_loss = train_metrics["posterior_kl"]
+                        layered_kl = train_metrics["layered_kl"]
+                    t_recon_loss_p, t_kl_loss_p = model.compute_losses(x, y)
+                    recon_loss += t_recon_loss
+                    kl_loss += t_kl_loss
+                    recon_loss_p += t_recon_loss_p
+                    kl_loss_p += t_kl_loss_p
 
-        val_loss, val_posterior = evaluate(model, val_loader)
-        layered_kl = evaluate_kl(model, val_loader)
+        val_loss = evaluate(model, val_loader)
+        val_posterior = None
+        layered_kl = None
+        if runtime.verbose:
+            val_posterior = evaluate_posterior(model, val_loader)
+            if is_kl_model:
+                layered_kl = evaluate_kl(model, val_loader)
         scheduler.step(val_loss)
 
 
@@ -197,18 +217,23 @@ def train_model(
         if runtime.verbose:
             train_batches = max(1, len(train_loader))
             mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
-            recon_loss /= train_batches
-            kl_loss /= train_batches
-            consistency /= train_batches
-            recon_loss_p /= train_batches
-            kl_loss_p /= train_batches
-            consistency_p /= train_batches
-
             log.info("========== Epoch %03d =========", epoch + 1)
-            log.info(" Train loss: %.5f: NLL on val set: %.5f, Posterior NLL on val: %.5f", mean_loss, val_loss, val_posterior)
-            log.info(" Posterior: NLL %.5f: kl_loss %.5f:", recon_loss, kl_loss)
-            log.info(" Prior: NLL %.5f: kl_loss %.5f:", recon_loss_p, kl_loss_p)
-            log.info(" Layered KL: %s", layered_kl)
+            log.info(" Train loss: %.5f: NLL on val set: %.5f", mean_loss, val_loss)
+            if is_kl_model:
+                recon_loss /= train_batches
+                kl_loss /= train_batches
+                consistency /= train_batches
+                recon_loss_p /= train_batches
+                kl_loss_p /= train_batches
+                consistency_p /= train_batches
+                log.info(
+                    " Posterior: NLL %.5f: kl_loss %.5f:",
+                    recon_loss,
+                    kl_loss,
+                )
+                log.info(" Prior: NLL %.5f: kl_loss %.5f:", recon_loss_p, kl_loss_p)
+                log.info(" Posterior NLL on val: %.5f", val_posterior)
+                log.info(" Layered KL: %s", layered_kl)
 
         if val_loss < best_val:
             best_val = val_loss
@@ -253,7 +278,7 @@ def train_model(
                 )
             break
 
-    after, _ = evaluate(model, val_loader)
+    after = evaluate(model, val_loader)
     if runtime.verbose:
         log.info("Validation loss after training: %.5f and before %.5f", after, before)
     if trial is None and after >= before:
