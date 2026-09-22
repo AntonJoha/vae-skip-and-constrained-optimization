@@ -151,18 +151,21 @@ class Model(nn.Module):
             output_dim=2 * config.output_dim * config.horizon,
         )
 
-        self.posterior_state = SequenceRNNEncoder(
+
+        self.posterior_state = SequenceAttentionEncoder(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
             layers=2,
             seq_len=config.seq_len + config.horizon,
         )
-        self.prior_state = SequenceAttentionEncoderCNN(
+        self.prior_state = SequenceAttentionEncoder(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
             layers=2,
             seq_len=config.seq_len,
             )
+
+
 
         self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
 
@@ -178,14 +181,9 @@ class Model(nn.Module):
             self.skip_weights = self.make_skips(config.layers)
 
 
-
         self.nllLoss = nn.GaussianNLLLoss()
         self.config = config
 
-
-        self.lambda_ = 0.0
-        self.lambda_lr = 1e-3
-        self.kl_penalty = 1.0
         self.kl_target = float(self.config.beta)
         self.basic = config.vae_baseline
 
@@ -351,18 +349,12 @@ class Model(nn.Module):
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
         residual = layered_kl - self._layer_target(layered_kl)
         loss = (
-            rec + residual.pow(2).mean() if self.kl_target != 0 else rec + residual.mean()
-            #+ self.lambda_ * residual.mean()
-            #+ 0.5 * self.kl_penalty * residual.pow(2).mean()
+            rec + residual.abs().mean()
         )
 
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            self.lambda_ = max(
-                0.0,
-                self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
-            )
+        
         return float(loss.detach())
 
 

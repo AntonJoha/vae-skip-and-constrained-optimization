@@ -110,6 +110,7 @@ class Model(nn.Module):
         self.lambda_lr = 1e-3
         self.kl_penalty = 1.0
         self.kl_target = float(self.config.beta)
+        self.epoch = 1
 
     def make_skips(self, num_layers):
         layers = []
@@ -164,7 +165,7 @@ class Model(nn.Module):
                 posterior_list.append(posterior)
     
                 mean, logvar = posterior.chunk(2, dim=-1)
-                logvar = torch.clamp(logvar, -6.0, 2.0)
+                logvar = torch.clamp(logvar, -15.0, 2.0)
     
                 posterior = self._reparametrize(mean, logvar)
             if self.config.reverse:
@@ -217,7 +218,7 @@ class Model(nn.Module):
         output = self.to_output(prior_state)
     
         mean, logvar = output.chunk(2, dim=-1)
-        logvar = torch.clamp(logvar, -6.0, 2.0)
+        logvar = torch.clamp(logvar, -15.0, 2.0)
     
         pred_mean = self._to_output_shape(mean)
         pred_logvar = self._to_output_shape(logvar)
@@ -266,7 +267,7 @@ class Model(nn.Module):
         )
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
         residual = self._layer_target(layered_kl) - layered_kl
-        loss = rec + self.lambda_ * residual.mean() + 0.5 * self.kl_penalty * residual.pow(2).mean()
+        loss = rec + self.lambda_ * residual.mean() #+ 0.5 * self.kl_penalty * residual.pow(2).mean()
         loss.backward()
         optimizer.step()
         with torch.no_grad():
