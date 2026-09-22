@@ -1,5 +1,5 @@
 import logging
-
+import random
 import torch
 from torch import nn
 
@@ -56,7 +56,7 @@ class SequenceAttentionEncoder(nn.Module):
                 d_model=hidden_dim,
                 nhead=_resolve_num_heads(hidden_dim),
                 dim_feedforward=hidden_dim * 4,
-                dropout=0.0,
+                dropout=0.1,
                 activation="gelu",
                 batch_first=True,
                 norm_first=True,
@@ -136,8 +136,10 @@ def _make_mlp(input_dim: int, hidden_dim: int, output_dim: int) -> nn.Sequential
     return nn.Sequential(
         nn.Linear(input_dim, hidden_dim),
         nn.ReLU(),
+        nn.Dropout(p=0.1),
         nn.Linear(hidden_dim, hidden_dim),
         nn.ReLU(),
+        nn.Dropout(p=0.1),
         nn.Linear(hidden_dim, output_dim),
     )
 
@@ -164,11 +166,6 @@ class Model(nn.Module):
             layers=2,
             seq_len=config.seq_len,
             )
-
-
-
-        self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
-
 
         self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
 
@@ -244,10 +241,12 @@ class Model(nn.Module):
     
             for layer in self.upwards_list:
                 posterior = layer(posterior)
-                posterior_list.append(posterior)
     
                 mean, logvar = posterior.chunk(2, dim=-1)
                 logvar = torch.clamp(logvar, -10.0, 2.0)
+                posterior = torch.cat([mean,logvar], dim=-1)
+                posterior_list.append(posterior)
+
     
                 posterior = self._reparametrize(mean, logvar)
             if self.config.reverse:
@@ -305,7 +304,6 @@ class Model(nn.Module):
     
         pred_mean = self._to_output_shape(mean)
         pred_logvar = self._to_output_shape(logvar)
-    
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 
 
@@ -333,6 +331,65 @@ class Model(nn.Module):
             float(self.kl_target) / max(1, layered_kl.numel()),
         )
 
+
+    def _parameter_groups(self):
+        groups = {
+            "posterior_encoder": list(self.posterior_state.parameters()),
+            "posterior_layers": list(self.upwards_list.parameters()),
+
+            "prior_encoder": list(self.prior_state.parameters()),
+            "prior_layers": list(self.downwards_list.parameters()),
+
+            "output": list(self.to_output.parameters()),
+        }
+
+        if self.skip_connection:
+            groups["skip_weights"] = list(self.skip_weights.parameters())
+
+        return groups
+
+
+    def _grad_norm(self, loss, parameters):
+        parameters = [p for p in parameters if p.requires_grad]
+
+        grads = torch.autograd.grad(
+            loss,
+            parameters,
+            retain_graph=True,
+            allow_unused=True,
+        )
+
+        squared_norm = 0.0
+        used = 0
+
+        for grad in grads:
+            if grad is not None:
+                squared_norm += grad.detach().pow(2).sum()
+                used += 1
+
+        if used == 0:
+            return 0.0
+
+        return squared_norm.sqrt().item()
+
+
+    def _gradient_diagnostics(self, losses):
+        groups = self._parameter_groups()
+
+        result = {}
+
+        for loss_name, loss in losses.items():
+            result[loss_name] = {}
+
+            for group_name, parameters in groups.items():
+                result[loss_name][group_name] = self._grad_norm(
+                    loss,
+                    parameters,
+                )
+
+        return result
+
+
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
@@ -347,11 +404,34 @@ class Model(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        residual = layered_kl - self._layer_target(layered_kl)
-        loss = (
-            rec + residual.abs().mean()
+
+        layered_kl = self._layered_kl(
+            prior_list,
+            combined_posterior_list,
         )
+
+        residual = layered_kl - self._layer_target(layered_kl)
+
+        kl_constraint = residual.abs().mean()
+
+        loss = rec + kl_constraint
+        #if random.random() < 1/50:
+        if False:
+            # Gradient diagnostics
+            grad_info = self._gradient_diagnostics({
+                "reconstruction": rec,
+                "kl_constraint": kl_constraint,
+            })
+
+            print("\nGradient norms:")
+
+            for loss_name, groups in grad_info.items():
+                print(f"  {loss_name}:")
+                for group_name, norm in groups.items():
+                    print(f"    {group_name:20s}: {norm:.6e}")
+            print("Losses: Reconstruction: ", rec.item(), " kl_cons: ", kl_constraint.item())
+            m, l, *_ = self._latent_pass(x,y=None,prior=True)
+            print("Logvar posterior: ", logvar[0][0][0].item(), " Posterior mean: ", mean[0][0][0].item(), "\nLogvar prior", l[0][0][0].item(), "Prior mean: ", m[0][0][0].item() )
 
         loss.backward()
         optimizer.step()
@@ -428,3 +508,4 @@ class Model(nn.Module):
 
 
         return torch.stack(kl_losses)
+

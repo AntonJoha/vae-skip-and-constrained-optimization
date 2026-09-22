@@ -321,6 +321,10 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
+            beta=trial.suggest_float(
+                "beta",
+                1e-2,
+                1),
             skip_connection=trial.suggest_categorical("skip_connection", [True, False])
         )
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)

@@ -1,11 +1,22 @@
 .PHONY: main tDLGM util eval lint shampoo vae_baseline_tune
-horizon = 50
+horizon = 10
 
 main:
-	python -m experiments.main --verbose --horizon 50 --learning_rate 0.001 --hidden_dim 64 --layers 1 --beta 0.5 --batch_size 64 --latent_dim 16
+	python -m experiments.main --verbose --horizon 10 --learning_rate 0.0001 --hidden_dim 32 --layers 1 --beta 0.5 --batch_siz 64
+
+
+upper:
+	python -m experiments.main --verbose --horizon 50 --learning_rate 0.0001 --hidden_dim 64 --layers 1 --beta 0.01 --batch_size 64 --latent_dim 16 --upper
+
+
 
 tune:
 	python -m experiments.main --verbose --tune --horizon $(horizon)
+
+
+vae_baseline_reverse_tune:
+	python -m experiments.main --verbose --tune --horizon $(horizon) --vae-baseline --reverse
+
 
 
 vae_baseline_tune:

@@ -1,5 +1,5 @@
 import logging
-
+import random
 import torch
 from torch import nn
 
@@ -267,15 +267,16 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list,
         )
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        residual = self._layer_target(layered_kl) - layered_kl
+        residual = layered_kl - self._layer_target(layered_kl) 
         loss = rec + self.lambda_ * residual.mean() #+ 0.5 * self.kl_penalty * residual.pow(2).mean()
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            self.lambda_ = max(
-                0.0,
-                self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
-            )
+        if random.random() < 1:
+            with torch.no_grad():
+                self.lambda_ = max(
+                    0.0,
+                    self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
+                )
 
         self.last_train_metrics = {
             "posterior_recon": float(rec.detach()),
