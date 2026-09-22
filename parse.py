@@ -1,5 +1,6 @@
-import re
 import json
+import re
+
 
 def parse_training_log(text):
     results = []
@@ -44,7 +45,7 @@ def parse_training_log(text):
 
 
 # Example usage
-with open("training_2.txt", "r") as f:
+with open("training_2.txt") as f:
     text = f.read()
 
 parsed = parse_training_log(text)

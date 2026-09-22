@@ -40,7 +40,7 @@ def convert_tsf_to_dataframe(
     found_data_section = False
     started_reading_data_section = False
 
-    with open(full_file_path_and_name, "r", encoding="cp1252") as file:
+    with open(full_file_path_and_name, encoding="cp1252") as file:
         for line in file:
             # Strip white space from start/end of line
             line = line.strip()
@@ -466,7 +466,7 @@ def _ped_get_mean_std(train):
 
     for files in [list(train.glob("*.txt"))]:
         for file in files:
-            with open(file, "r") as f:
+            with open(file) as f:
                 for line in f:
                     values = line.split()[2:]  # keep columns 3 and onward
                     arr.append(np.array(values))
@@ -478,6 +478,7 @@ def _ped_get_mean_std(train):
     return mean, std
 
 from collections import defaultdict
+
 
 def _ped_get_folder(
     ped_folder,
@@ -494,7 +495,7 @@ def _ped_get_folder(
 
         trajectories = defaultdict(list)
 
-        with open(file, "r") as f:
+        with open(file) as f:
             for line in f:
                 frame, ped_id, x, y = map(float, line.split())
 
@@ -720,12 +721,13 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
-        "data/cleaned_weather.csv",
 
+        "data/eth.ped",
         "data/AirQualityUCI.csv",
         "data/cleaned_weather.csv",
+
+        "data/cleaned_weather.csv",
         "data/solar_10_minutes_dataset.tsf",
-        "data/eth.ped",
         "data/pedestrian_counts_dataset.tsf",
 
         "data/covid_deaths_dataset.tsf",

@@ -2,6 +2,7 @@ import logging
 
 import torch
 from torch import nn
+
 from experiments.util import SeriesConfig
 
 log = logging.getLogger(__name__)
@@ -250,7 +251,7 @@ class Model(nn.Module):
         recon_loss = self.nllLoss(pred_mean, y.squeeze(-1), pred_logvar.exp())
         kl_loss = 0.0
         if prior_list is not None and combined_posterior_list is not None:
-            for prior, posterior in zip(prior_list, combined_posterior_list):
+            for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
 
                 p_mean, p_logvar = prior.chunk(2, dim=-1)
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
@@ -271,7 +272,7 @@ class Model(nn.Module):
     def get_layered_kl(self, x, y):
         _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
         kl_losses = []
-        for prior, posterior in zip(prior_list, combined_posterior_list):
+        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
             p_mean, p_logvar = prior.chunk(2, dim=-1)
             q_mean, q_logvar = posterior.chunk(2, dim=-1)
 

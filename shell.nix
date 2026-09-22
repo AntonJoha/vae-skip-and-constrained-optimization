@@ -8,7 +8,7 @@ let
     };
   };
 
-  python = pkgs.python3.withPackages (ps: with ps; [
+  python = pkgs.python314.withPackages (ps: with ps; [
     jupyterlab
     ipykernel
     optuna
@@ -16,10 +16,10 @@ let
     numpy
     pandas
     torch
-    gymnasium
     pip
     ruff
     scikit-learn
+    datasets
   ]);
 
 in

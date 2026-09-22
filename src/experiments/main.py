@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import Reg_Model, Upper_Model, Lower_Model, Basic, VRNN
+from model import VRNN, Basic, Lower_Model, Reg_Model, Upper_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
