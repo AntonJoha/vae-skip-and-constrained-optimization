@@ -14,7 +14,7 @@ from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
 from experiments.main import unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
-from model import Reg_Model, Upper_Model
+from model import Reg_Model, Upper_Model, VAE_Baseline_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -299,6 +299,8 @@ def benchmark_model(args, model_path: Path) -> None:
     if runtime.model_name == "tdlgm":
         if runtime.upper:
             model = Upper_Model(model_config).to(device)
+        elif runtime.vae_baseline:
+            model = VAE_Baseline_Model(model_config).to(device)
         else:
             model = Reg_Model(model_config).to(device)
 
