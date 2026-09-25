@@ -308,7 +308,7 @@ def benchmark_model(args, model_path: Path) -> None:
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
     elif model_config.model_name == "baseline":
-        model = Baseline(runtime).to(device)
+        model = Baseline(model_config).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_baseline(model, test_loader, scaler)
