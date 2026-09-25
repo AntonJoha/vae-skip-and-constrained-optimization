@@ -296,7 +296,7 @@ def benchmark_model(args, model_path: Path) -> None:
     _set_input_output_dim(runtime, test_loader)
 
     res = None
-    if runtime.model_name == "tdlgm":
+    if model_config.model_name == "tdlgm":
         if model_config.upper:
             model = Upper_Model(model_config).to(device)
         elif model_config.vae_baseline:
@@ -307,7 +307,7 @@ def benchmark_model(args, model_path: Path) -> None:
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
         res = evaluate_tdlgm(model, test_loader, scaler)
-    elif runtime.model_name == "baseline":
+    elif model_config.model_name == "baseline":
         model = Baseline(runtime).to(device)
         model.load_state_dict(model_state)
         _, _, test_loader = make_dataloaders(runtime)
