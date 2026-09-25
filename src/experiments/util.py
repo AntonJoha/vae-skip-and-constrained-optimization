@@ -92,7 +92,6 @@ class SeriesConfig(BaselineConfig):
     vrnn: bool = False
     reverse: bool = False
     vae_baseline: bool = False
-    vae_kl_warmup_fraction: float = 0.3
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:

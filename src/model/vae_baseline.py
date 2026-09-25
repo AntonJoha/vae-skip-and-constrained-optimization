@@ -12,23 +12,14 @@ class Model(RegModel):
         super().__init__(config)
         self.beta = float(self.config.beta)
         total_epochs = self.config.tuning_epochs if self.config.tune else self.config.epochs
-        warmup_fraction = min(
-            1.0, max(0.0, float(getattr(self.config, "vae_kl_warmup_fraction", 0.3)))
-        )
-        if warmup_fraction == 0.0:
-            self.kl_warmup_epochs = 0
-        else:
-            self.kl_warmup_epochs = max(1, int(total_epochs * warmup_fraction))
+        self.kl_warmup_epochs = max(1, int(total_epochs * 0.3))
         self.kl_weight = 0.0
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-        if self.kl_warmup_epochs == 0:
-            self.kl_weight = self.beta
-        else:
-            warmup_denom = max(1, self.kl_warmup_epochs - 1)
-            warmup_progress = min(1.0, float(epoch) / float(warmup_denom))
-            self.kl_weight = self.beta * warmup_progress
+        warmup_denom = max(1, self.kl_warmup_epochs - 1)
+        warmup_progress = min(1.0, float(epoch) / float(warmup_denom))
+        self.kl_weight = self.beta * warmup_progress
         log.info(
             "Epoch %d: KL warmup weight set to %.4f",
             epoch,

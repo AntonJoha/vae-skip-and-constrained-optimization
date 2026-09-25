@@ -392,12 +392,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--reverse", action="store_true",  default=False)
     parser.add_argument("--vae-baseline", action="store_true", default=False)
-    parser.add_argument(
-        "--vae-kl-warmup-fraction",
-        type=float,
-        default=0.3,
-        help="Fraction of training epochs for KL warmup in [0.0, 1.0].",
-    )
 
 
     return parser.parse_args()
