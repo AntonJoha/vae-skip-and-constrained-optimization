@@ -84,12 +84,12 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    if runtime.vrnn:
-        print("VRNN")
-        model = VRNN(runtime).to(device)
-    elif runtime.vae_baseline:
+    if runtime.vae_baseline:
         print("VAE baseline")
         model = VAE_Baseline_Model(runtime).to(device)
+    elif runtime.vrnn:
+        print("VRNN")
+        model = VRNN(runtime).to(device)
     elif runtime.basic:
         print("Basic")
         model = Basic(runtime).to(device)
