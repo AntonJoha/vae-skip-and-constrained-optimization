@@ -33,6 +33,13 @@ class TestVAEBaselineWarmup(unittest.TestCase):
         model.set_epoch(100)
         self.assertEqual(model.kl_weight, 2.0)
 
+    def test_zero_fraction_disables_warmup(self):
+        config = self._make_config()
+        config.vae_kl_warmup_fraction = 0.0
+        model = Model(config)
+        model.set_epoch(0)
+        self.assertEqual(model.kl_weight, 2.0)
+
 
 if __name__ == "__main__":
     unittest.main()
