@@ -27,7 +27,7 @@ class SequenceAttentionEncoder(nn.Module):
                 d_model=hidden_dim,
                 nhead=_resolve_num_heads(hidden_dim),
                 dim_feedforward=hidden_dim * 4,
-                dropout=0.0,
+                dropout=0.1,
                 activation="gelu",
                 batch_first=True,
                 norm_first=True,
@@ -54,8 +54,10 @@ def _make_mlp(input_dim: int, hidden_dim: int, output_dim: int) -> nn.Sequential
     return nn.Sequential(
         nn.Linear(input_dim, hidden_dim),
         nn.ReLU(),
+        nn.Dropout(p=0.1),
         nn.Linear(hidden_dim, hidden_dim),
         nn.ReLU(),
+        nn.Dropout(p=0.1),
         nn.Linear(hidden_dim, output_dim),
     )
 
@@ -142,6 +144,7 @@ class Model(nn.Module):
         mean2: torch.Tensor,
         logvar2: torch.Tensor,
     ):
+        #return mean1, logvar1
         precision1 = torch.exp(-logvar1)
         precision2 = torch.exp(-logvar2)
         combined_precision = precision1 + precision2
@@ -231,18 +234,15 @@ class Model(nn.Module):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
         self.kl_target = float(self.config.beta)
-        self.kl_target = float(self.config.beta)/((self.epoch+1)**0.5)
+        self.kl_target = float(self.config.beta)/((self.epoch+1)**1)
 
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return layered_kl.new_full(
             layered_kl.shape,
-            float(self.kl_target) / max(1, layered_kl.numel()),
+            float(self.kl_target) # / max(1, layered_kl.numel()),
         )
-
-
-
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -268,14 +268,14 @@ class Model(nn.Module):
         )
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
         residual = layered_kl - self._layer_target(layered_kl) 
-        loss = rec + self.lambda_ * residual.mean() #+ 0.5 * self.kl_penalty * residual.pow(2).mean()
+        loss = rec + self.lambda_ * residual.sum()
         loss.backward()
         optimizer.step()
         if random.random() < 1:
             with torch.no_grad():
                 self.lambda_ = max(
                     0.0,
-                    self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
+                    self.lambda_ + self.lambda_lr * residual.detach().sum().item(),
                 )
 
         self.last_train_metrics = {
@@ -328,9 +328,6 @@ class Model(nn.Module):
     def get_layered_kl(self, x, y):
         _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
         return self._layered_kl(prior_list, combined_posterior_list).detach()
-
-
-
 
 
     @torch.no_grad()

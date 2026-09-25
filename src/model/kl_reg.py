@@ -94,7 +94,7 @@ class SequenceAttentionEncoderCNN(nn.Module):
                 d_model=hidden_dim,
                 nhead=_resolve_num_heads(hidden_dim),
                 dim_feedforward=hidden_dim * 4,
-                dropout=0.1,
+                dropout=0.0,
                 activation="gelu",
                 batch_first=True,
                 norm_first=True,
@@ -209,7 +209,7 @@ class Model(nn.Module):
         return mean + eps * std
 
     def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
-        #return mean1, logvar1
+        return mean1, logvar1
         
         
         # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
@@ -412,7 +412,7 @@ class Model(nn.Module):
 
         residual = layered_kl - self._layer_target(layered_kl)
 
-        kl_constraint = residual.abs().mean()
+        kl_constraint = residual.abs().sum()
 
         loss = rec + kl_constraint
         #if random.random() < 1/50:

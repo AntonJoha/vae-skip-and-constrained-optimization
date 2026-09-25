@@ -30,7 +30,7 @@ DATASET_PATH = Path(__file__).with_name("data").joinpath("shampoo_sales.csv")
 
 @dataclass(slots=True)
 class DataConfig:
-    seq_len: int = 12
+    seq_len: int = 20
     batch_size: int = 32
     horizon: int = 1
     shampoo_code: bool = False
@@ -38,7 +38,7 @@ class DataConfig:
     train_fraction: float = 0.8
     artifact_dir: str = "artifacts_dev/tdlgm"
     checkpoint_interval: int = 10
-    early_stopping_patience: int = 10
+    early_stopping_patience: int = 25
     run_id: str | None = time.strftime("%Y%m%d-%H%M%S", time.localtime())
     model_name: str = "tdlgm"
 
@@ -76,7 +76,7 @@ class SeriesConfig(BaselineConfig):
     std: float = 0.2
 
     # Training/tuning
-    tuning_trials: int = 20
+    tuning_trials: int = 50
     tuning_epochs: int = 40
     tune: bool = False
 

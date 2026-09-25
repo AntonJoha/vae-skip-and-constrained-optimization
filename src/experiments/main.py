@@ -136,7 +136,7 @@ def train_model(
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode='min',
-        factor=0.5,
+        factor=0.1,
         patience=5,
     )
     train_epochs = runtime.epochs if epochs is None else epochs
@@ -172,6 +172,7 @@ def train_model(
         for batch in train_loader:
             x, y = unpack_batch(batch)
             epoch_losses.append(model.train_step(x, y, optimizer))
+            model.train_step(x, y, optimizer)
             if runtime.verbose:
                 train_metrics = getattr(model, "last_train_metrics", None)
                 if train_metrics is None:
@@ -190,7 +191,8 @@ def train_model(
                 kl_loss += t_kl_loss
                 recon_loss_p += t_recon_loss_p
                 kl_loss_p += t_kl_loss_p
-
+        post = evaluate_posterior(model, train_loader)
+        prior = evaluate(model, train_loader)
         val_loss = evaluate(model, val_loader)
         val_posterior = None
         layered_kl = None
@@ -224,8 +226,10 @@ def train_model(
             
             log.info("========== Epoch %03d =========", epoch + 1)
             log.info(" Train loss: %.5f: NLL on val set: %.5f, Posterior NLL on val: %.5f", mean_loss, val_loss, val_posterior)
-            log.info(" Posterior: NLL %.5f: kl_loss %.5f:", recon_loss, kl_loss)
-            log.info(" Prior: NLL %.5f: kl_loss %.5f:", recon_loss_p, kl_loss_p)
+            #log.info(" Posterior: NLL %.5f: kl_loss %.5f:", recon_loss, kl_loss)
+            #log.info(" Prior: NLL %.5f: kl_loss %.5f:", recon_loss_p, kl_loss_p)
+            log.info(" Posterior: NLL %.5f: kl_loss %.5f:", post, kl_loss)
+            log.info(" Prior: NLL %.5f: kl_loss %.5f:", prior, kl_loss_p)
             log.info(" Layered KL: %s", layered_kl)
 
         if val_loss < best_val:
@@ -302,17 +306,17 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             ),
             layers=trial.suggest_int(
                 "layers",
-                1,
-                4,
+                2,
+                6,
             ),
             batch_size=trial.suggest_categorical(
                 "batch_size",
-                [32, 64, 128],
+                [16, 32, 64, 128],
             ),
             learning_rate=trial.suggest_float(
                 "learning_rate",
-                1e-5,
-                5e-3,
+                1e-6,
+                5e-2,
                 log=True,
             ),
             weight_decay=trial.suggest_float(

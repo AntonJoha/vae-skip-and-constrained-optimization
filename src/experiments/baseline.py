@@ -129,6 +129,14 @@ def train_model(
     model.compile()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=runtime.learning_rate)
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=0.1,
+        patience=5,
+    )
+
     train_epochs = runtime.epochs if epochs is None else epochs
     checkpoint_interval = max(1, runtime.checkpoint_interval)
     early_stopping_patience = runtime.early_stopping_patience
@@ -152,6 +160,7 @@ def train_model(
             epoch_losses.append(model.train_step(x, y, optimizer))
 
         val_loss = evaluate(model, val_loader)
+        
 
         if runtime.verbose:
             mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
@@ -175,7 +184,8 @@ def train_model(
                     logger.info("Saved checkpoint to %s", saved_path)
         else:
             epochs_without_improvement += 1
-
+        
+        scheduler.step(val_loss)
         if trial is not None:
             trial.report(val_loss, epoch)
             if trial.should_prune():

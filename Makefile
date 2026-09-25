@@ -1,12 +1,12 @@
 .PHONY: main tDLGM util eval lint shampoo vae_baseline_tune
-horizon = 10
+horizon = 20
 
 main:
-	python -m experiments.main --verbose --horizon 10 --learning_rate 0.0001 --hidden_dim 32 --layers 1 --beta 0.5 --batch_siz 64
+	python -m experiments.main --verbose --horizon 50 --learning_rate 0.00001 --hidden_dim 32 --layers 2 --beta 0.5 --batch_siz 64 --reverse 
 
 
 upper:
-	python -m experiments.main --verbose --horizon 50 --learning_rate 0.0001 --hidden_dim 64 --layers 1 --beta 0.01 --batch_size 64 --latent_dim 16 --upper
+	python -m experiments.main --verbose --horizon 5 --learning_rate 0.0001 --hidden_dim 512 --layers 3 --batch_size 64 --upper --skip_connection --reverse --beta 1
 
 
 
@@ -52,20 +52,22 @@ basic_tune:
 
 
 eval_tune:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260921-132124.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055637.pt
 
 eval_upper_reverse:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260921-132050.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055618.pt
 
 eval_upper:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260921-132103.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055620.pt
 
 eval_reverse:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260921-132113.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055622.pt
 
 eval_baseline:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260921-132137.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055634.pt
 
 eval_vae:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260921-132144.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055628.pt
 
+eval_vae_reverse:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055631.pt

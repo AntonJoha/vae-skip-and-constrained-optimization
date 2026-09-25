@@ -645,6 +645,7 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
     logger.info(f"train dataset size: {len(train_dataset)}")
     logger.info(f"val dataset size: {len(val_dataset)}")
     logger.info(f"test dataset size: {len(test_dataset)}")
+
     return train_df, val_df, test_df
 
 
@@ -723,8 +724,10 @@ def get_dataset_names():
     return [
 
         "data/AirQualityUCI.csv",
-        "data/cleaned_weather.csv",
+        "data/solar_4_seconds_dataset.tsf",
         "data/covid_deaths_dataset.tsf",
+
+        "data/cleaned_weather.csv",
         "data/solar_10_minutes_dataset.tsf",
         "data/eth.ped",
 
