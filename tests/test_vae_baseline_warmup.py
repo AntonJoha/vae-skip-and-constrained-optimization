@@ -26,11 +26,11 @@ class TestVAEBaselineWarmup(unittest.TestCase):
     def test_warmup_ramps_up(self):
         model = Model(self._make_config())
         model.set_epoch(2)
-        self.assertAlmostEqual(model.kl_weight, 0.8)
+        self.assertAlmostEqual(model.kl_weight, 1.0)
 
     def test_warmup_saturates_at_beta(self):
         model = Model(self._make_config())
-        model.set_epoch(100)
+        model.set_epoch(model.kl_warmup_epochs - 1)
         self.assertEqual(model.kl_weight, 2.0)
 
     def test_zero_fraction_disables_warmup(self):

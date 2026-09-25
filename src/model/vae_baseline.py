@@ -26,7 +26,8 @@ class Model(RegModel):
         if self.kl_warmup_epochs == 0:
             self.kl_weight = self.beta
         else:
-            warmup_progress = min(1.0, float(epoch) / float(self.kl_warmup_epochs))
+            warmup_denom = max(1, self.kl_warmup_epochs - 1)
+            warmup_progress = min(1.0, float(epoch) / float(warmup_denom))
             self.kl_weight = self.beta * warmup_progress
         log.info(
             "Epoch %d: KL warmup weight set to %.4f",
