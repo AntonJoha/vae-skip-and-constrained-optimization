@@ -14,7 +14,7 @@ from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
 from experiments.main import unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
-from model import Reg_Model, Upper_Model
+from model import Reg_Model, Upper_Model, VAE_Baseline_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -284,35 +284,40 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 
 def benchmark_model(args, model_path: Path) -> None:
-    runtime, model_config, model_state, _model_class = load_checkpoint(model_path)
-    runtime.reduced_dataset = 1
+    _runtime, model_config, model_state, _model_class = load_checkpoint(model_path)
 
-    print(runtime)
-    runtime = replace(runtime, output_dim=runtime.horizon)
-    runtime = replace(runtime, batch_size=args.batch_size)
+    print(model_config)
+    eval_config = replace(
+        model_config,
+        reduced_dataset=1,
+        output_dim=model_config.horizon,
+        batch_size=args.batch_size,
+    )
 
-    _, _, test_loader = make_dataloaders(runtime)
-    scaler = get_scale_constant(runtime)
-    _set_input_output_dim(runtime, test_loader)
+    _, _, test_loader = make_dataloaders(eval_config)
+    scaler = get_scale_constant(eval_config)
+    _set_input_output_dim(eval_config, test_loader)
 
     res = None
-    if runtime.model_name == "tdlgm":
-        if runtime.upper:
+    if model_config.model_name == "tdlgm":
+        if model_config.upper:
             model = Upper_Model(model_config).to(device)
+        elif model_config.vae_baseline:
+            model = VAE_Baseline_Model(model_config).to(device)
         else:
             model = Reg_Model(model_config).to(device)
 
         model.load_state_dict(model_state)
-        _, _, test_loader = make_dataloaders(runtime)
+        _, _, test_loader = make_dataloaders(eval_config)
         res = evaluate_tdlgm(model, test_loader, scaler)
-    elif runtime.model_name == "baseline":
-        model = Baseline(runtime).to(device)
+    elif model_config.model_name == "baseline":
+        model = Baseline(model_config).to(device)
         model.load_state_dict(model_state)
-        _, _, test_loader = make_dataloaders(runtime)
+        _, _, test_loader = make_dataloaders(eval_config)
         res = evaluate_baseline(model, test_loader, scaler)
 
     print(
-        f"Model: {runtime.model_name}, Checkpoint: {model_path}, Test Loss: {res['loss']:.5f}, NLL Position Loss: {res['loss_position']}, Test MSE Loss: {res['mse_loss']:.5f} MSE Position Loss: {res['mse_loss_position']}"
+        f"Model: {model_config.model_name}, Checkpoint: {model_path}, Test Loss: {res['loss']:.5f}, NLL Position Loss: {res['loss_position']}, Test MSE Loss: {res['mse_loss']:.5f} MSE Position Loss: {res['mse_loss_position']}"
     )
     print(
         f"Test ADE Position Loss: {res['ade_loss_position']:.5f}, Test FDE Position Loss: {res['fde_loss_position']:.5f}, Test ADE Loss: {res['ade_loss']:.5f}, Test FDE Loss: {res['fde_loss']:.5f}"

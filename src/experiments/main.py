@@ -22,7 +22,7 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import VRNN, Basic, Lower_Model, Reg_Model, Upper_Model
+from model import VRNN, Basic, Lower_Model, Reg_Model, Upper_Model, VAE_Baseline_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -84,7 +84,10 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    if runtime.vrnn:
+    if runtime.vae_baseline:
+        print("VAE baseline")
+        model = VAE_Baseline_Model(runtime).to(device)
+    elif runtime.vrnn:
         print("VRNN")
         model = VRNN(runtime).to(device)
     elif runtime.basic:
