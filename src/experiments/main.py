@@ -90,15 +90,15 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     elif runtime.basic:
         print("Basic")
         model = Basic(runtime).to(device)
+    elif runtime.vae_baseline:
+        print("VAE baseline")
+        model = VAE_Baseline_Model(runtime).to(device)
     elif runtime.upper:
         print("Upper")
         model = Upper_Model(runtime).to(device)
     elif runtime.lower:
         print("Lower")
         model = Lower_Model(runtime).to(device)
-    elif runtime.vae_baseline:
-        print("VAE baseline")
-        model = VAE_Baseline_Model(runtime).to(device)
     else:   
         print("Reg")
         model = Reg_Model(runtime).to(device)

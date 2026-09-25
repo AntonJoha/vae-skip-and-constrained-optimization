@@ -17,7 +17,7 @@ class Model(RegModel):
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-        warmup_progress = min(1.0, float(epoch + 1) / float(self.kl_warmup_epochs))
+        warmup_progress = min(1.0, float(epoch) / float(self.kl_warmup_epochs))
         self.kl_weight = self.beta * warmup_progress
         log.info(
             "Epoch %d: KL warmup weight set to %.4f",
