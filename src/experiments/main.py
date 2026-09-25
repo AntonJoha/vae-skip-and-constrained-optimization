@@ -87,12 +87,12 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     if runtime.vrnn:
         print("VRNN")
         model = VRNN(runtime).to(device)
-    elif runtime.basic:
-        print("Basic")
-        model = Basic(runtime).to(device)
     elif runtime.vae_baseline:
         print("VAE baseline")
         model = VAE_Baseline_Model(runtime).to(device)
+    elif runtime.basic:
+        print("Basic")
+        model = Basic(runtime).to(device)
     elif runtime.upper:
         print("Upper")
         model = Upper_Model(runtime).to(device)
@@ -392,6 +392,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--reverse", action="store_true",  default=False)
     parser.add_argument("--vae-baseline", action="store_true", default=False)
+    parser.add_argument("--vae-kl-warmup-fraction", type=float, default=0.3)
 
 
     return parser.parse_args()
