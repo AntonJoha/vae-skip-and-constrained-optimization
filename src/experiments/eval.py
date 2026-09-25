@@ -297,9 +297,9 @@ def benchmark_model(args, model_path: Path) -> None:
 
     res = None
     if runtime.model_name == "tdlgm":
-        if runtime.upper:
+        if model_config.upper:
             model = Upper_Model(model_config).to(device)
-        elif runtime.vae_baseline:
+        elif model_config.vae_baseline:
             model = VAE_Baseline_Model(model_config).to(device)
         else:
             model = Reg_Model(model_config).to(device)
