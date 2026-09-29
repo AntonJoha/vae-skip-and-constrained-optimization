@@ -55,10 +55,10 @@ eval_tune:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055637.pt
 
 eval_upper_reverse:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055618.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260925-092618.pt
 
 eval_upper:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055620.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260925-092622.pt
 
 eval_reverse:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055622.pt
@@ -71,3 +71,30 @@ eval_vae:
 
 eval_vae_reverse:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055631.pt
+
+
+
+
+eval_tune_no_gaussian:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260925-102551.pt
+
+eval_upper_reverse_no_gaussian:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055618.pt
+
+eval_upper_no_gaussian:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055620.pt
+
+eval_reverse_no_gaussian:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260925-102613.pt
+
+eval_baseline_no_gaussian:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055634.pt
+
+eval_vae_no_gaussian:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055628.pt
+
+eval_vae_reverse_no_gaussian:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260925-102613.pt
+
+
+

@@ -234,14 +234,15 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list,
         )
         residual = self.kl_target - kl
-        loss = rec + self.lambda_ * residual + 0.5 * self.kl_penalty * residual.pow(2)
+        loss = rec + self.lambda_ * residual
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            self.lambda_ = max(
-                0.0,
-                self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
-            )
+        if random.random() < 1/1000:
+            with torch.no_grad():
+                self.lambda_ = max(
+                    0.0,
+                    self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
+                )
 
         return float(loss.detach())
 
