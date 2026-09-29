@@ -184,7 +184,7 @@ class Model(nn.Module):
 
         self.kl_target = float(self.config.beta)
         self.basic = config.vae_baseline
-        self.lambda_ = 0.0
+        self.lambda_ = 1.0
 
     def make_skips(self, num_layers):
         layers = []
@@ -416,7 +416,8 @@ class Model(nn.Module):
 
         loss = rec + kl_constraint + residual.pow(2).mean()
 
-        self.lambda_ = self.lambda_ + self.config.lr_lambda * residual.mean().detach()
+        self.lambda_ = self.lambda_ + self.config.lr_lambda *0.1* residual.mean().detach()
+        print("Lambda: ", self.lambda_.item(), " Residual: ", residual.mean().item(), " KL constraint: ", kl_constraint.item())
 
         if self.config.grad_diagnostics:
             # Gradient diagnostics

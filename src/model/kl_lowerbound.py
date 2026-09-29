@@ -234,7 +234,6 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list,
         )
 
-        print(f"KL target: {self.kl_target:.4f}, KL: {kl:.4f}, lambda: {self.lambda_:.4f}")
         residual = self.kl_target - kl
         loss = rec + self.lambda_ * residual + residual.pow(2)
         loss.backward()
