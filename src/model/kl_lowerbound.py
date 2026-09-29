@@ -107,7 +107,7 @@ class Model(nn.Module):
 
 
         self.lambda_ = 1.0
-        self.lambda_lr = 1
+        self.lambda_lr = 1e-4
         self.kl_target = 0.5
 
     def make_skips(self, num_layers):
@@ -233,16 +233,17 @@ class Model(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
+
+        print(f"KL target: {self.kl_target:.4f}, KL: {kl:.4f}, lambda: {self.lambda_:.4f}")
         residual = self.kl_target - kl
         loss = rec + self.lambda_ * residual
         loss.backward()
         optimizer.step()
-        if random.random() < 1/1000:
-            with torch.no_grad():
-                self.lambda_ = max(
-                    0.0,
-                    self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
-                )
+        with torch.no_grad():
+            self.lambda_ = max(
+                0.0,
+                self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
+            )
 
         return float(loss.detach())
 
