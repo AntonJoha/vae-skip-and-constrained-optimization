@@ -271,8 +271,6 @@ def get_csv_dataset(
         df.drop(["Date", "Time"], axis=1, inplace=True)
         # Replace -200 values with NaN
         df.replace(-200, np.nan, inplace=True)
-        # Forward fill NaN values
-        df.ffill(inplace=True)
         # Replace commas with dots in object columns
         for col in df.columns:
             if df[col].dtype == "object":
@@ -280,6 +278,8 @@ def get_csv_dataset(
                     df[col].str.replace(",", ".", regex=False),
                     errors="coerce",
                 )
+        # Fill missing values using linear interpolation
+        df.interpolate(method="linear", limit_direction="both", inplace=True)
     if path.name == "cleaned_weather.csv":
         df.drop(["date"], inplace=True, axis=1)
     if path.name == "toy_dataset.csv":
