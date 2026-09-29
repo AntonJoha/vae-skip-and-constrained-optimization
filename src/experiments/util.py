@@ -68,6 +68,7 @@ class SeriesConfig(BaselineConfig):
     # Training overrides
     batch_size: int = 32
     learning_rate: float = 1e-3
+    lr_lambda: float = 0.1
 
     beta: float = 0.565
     alpha: float = 1e-2
@@ -92,6 +93,7 @@ class SeriesConfig(BaselineConfig):
     vrnn: bool = False
     reverse: bool = False
     vae_baseline: bool = False
+    grad_diagnostics: bool = False
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:
