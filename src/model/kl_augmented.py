@@ -418,7 +418,7 @@ class Model(nn.Module):
         constrain_violation = residual.pow(2).mean()
 
         if constrain_violation > self.reduction_threshold*self.old_violation:
-            self.rho = min(self.rho_lr * self.rho, self.config.rho_max)
+            self.rho *= self.rho_scaler
 
         self.old_violation = constrain_violation
         self.lambda_ = min(max(
@@ -427,7 +427,7 @@ class Model(nn.Module):
         ), 50)
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f",
-            expected_kl,
+            expected_kl.mean().item(),
             residual.mean().item(),
             self.lambda_,
             self.rho,

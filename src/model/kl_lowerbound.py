@@ -110,7 +110,7 @@ class Model(nn.Module):
         self.lambda_lr = 1e-4
         self.kl_target = 0.5
         self.rho = self.config.rho
-        self.rho_lr = self.config.rho_scaler
+        self.rho_scaler = float(self.config.rho_scaler)
         self.reduction_threshold = self.config.reduction_threshold
         self.old_violation = torch.inf
 
@@ -251,7 +251,7 @@ class Model(nn.Module):
         
         constrain_violation = max(0.0, residual.pow(2).mean().item())
         if constrain_violation > self.reduction_threshold*self.old_violation:
-            self.rho = min(self.rho_lr * self.rho, self.config.rho_max)
+            self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
         self.lambda_ = min(max(
             0.0,
@@ -327,13 +327,10 @@ class Model(nn.Module):
                 p_logvar - q_logvar
                 + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
                   / torch.exp(p_logvar)
-                - 1
+                  - 1
             )
             kl_losses.append(kl.sum(dim=-1).mean())
-
-
-
-
+        return torch.stack(kl_losses)
     @torch.no_grad()
     def get_layered_kl(self, x, y):
         _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
