@@ -100,7 +100,11 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
         model = Reg_Model(runtime).to(device)
 
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
-    optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
+    optimizer = Adam(
+        model.parameters(),
+        lr=runtime.learning_rate,
+        weight_decay=runtime.weight_decay,
+    )
     if runtime.verbose:
         log.info(
             "Parameters: %s",
@@ -273,56 +277,37 @@ def train_model(
 
 def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
     def objective(trial: optuna.Trial) -> float:
-        runtime = replace(
-            base_runtime,
-            hidden_dim=trial.suggest_categorical(
-                "hidden_dim",
-                [ 32, 64, 128, 256, 512],
+        params = {
+            "hidden_dim": trial.suggest_categorical(
+                "hidden_dim", [32, 64, 128, 256, 512]
             ),
-            layers=trial.suggest_int(
-                "layers",
-                2,
-                6,
+            "layers": trial.suggest_int("layers", 2, 6),
+            "batch_size": trial.suggest_categorical(
+                "batch_size", [16, 32, 64, 128]
             ),
-            batch_size=trial.suggest_categorical(
-                "batch_size",
-                [16, 32, 64, 128],
+            "learning_rate": trial.suggest_float(
+                "learning_rate", 1e-5, 5e-3, log=True
             ),
-            learning_rate=trial.suggest_float(
-                "learning_rate",
-                1e-6,
-                5e-2,
-                log=True,
+            "weight_decay": trial.suggest_float(
+                "weight_decay", 1e-7, 1e-2, log=True
             ),
-            lr_lambda=trial.suggest_float(
-                "lr_lambda",
-                1e-5,
-                1e-1,
-                log=True,
+            "beta": trial.suggest_float("beta", 1e-2, 1.0),
+            "skip_connection": trial.suggest_categorical(
+                "skip_connection", [True, False]
             ),
-            rho=trial.suggest_float(
-                "rho",
-                1e-2,
-                1e1,
-                log=True,
-            ),
-            reduction_threshold=trial.suggest_float(
-                "reduction_threshold",
-                0.8,
-                0.99,
-            ),
-            weight_decay=trial.suggest_float(
-                "weight_decay",
-                1e-7,
-                1e-2,
-                log=True,
-            ),
-            beta=trial.suggest_float(
-                "beta",
-                1e-2,
-                1),
-            skip_connection=trial.suggest_categorical("skip_connection", [True, False])
-        )
+        }
+        if not base_runtime.lower:
+            params.update(
+                lr_lambda=trial.suggest_float(
+                    "lr_lambda", 1e-5, 1e-2, log=True
+                ),
+                rho=trial.suggest_float("rho", 1e-2, 1e1, log=True),
+                rho_scaler=trial.suggest_float("rho_scaler", 1.001, 1.1),
+                reduction_threshold=trial.suggest_float(
+                    "reduction_threshold", 0.8, 0.99
+                ),
+            )
+        runtime = replace(base_runtime, **params)
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
 
