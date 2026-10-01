@@ -186,6 +186,7 @@ class Model(nn.Module):
         self.kl_target = float(self.config.beta)
         self.basic = config.vae_baseline
         self.rho = float(self.config.rho)
+        print("Setting rho", self.rho)
         if not math.isfinite(self.rho) or self.rho <= 0:
             raise ValueError("rho must be a finite positive value")
         self.scaled_lambda = 1.0 / self.rho
@@ -415,20 +416,17 @@ class Model(nn.Module):
         )
 
         residual = layered_kl - self._layer_target(layered_kl)
+        kl_constraint = (self.scaled_lambda * residual).mean() + (self.rho*residual.pow(2)).mean()
 
-        kl_constraint = 0.5 * self.rho * (
-            (residual + self.scaled_lambda).pow(2).mean()
-            - self.scaled_lambda**2
-        )
+
         loss = rec + kl_constraint
-
         self.scaled_lambda = (
             self.scaled_lambda
             + self.config.lr_lambda
-            * 0.1
-            / self.rho
             * residual.mean().detach()
         )
+
+        """
         print(
             "Scaled lambda: ",
             self.scaled_lambda.item(),
@@ -436,7 +434,10 @@ class Model(nn.Module):
             residual.mean().item(),
             " KL constraint: ",
             kl_constraint.item(),
+            "loss: ",
+            loss.item(),
         )
+        """
 
         if self.config.grad_diagnostics:
             # Gradient diagnostics

@@ -235,12 +235,12 @@ class Model(nn.Module):
         )
 
         residual = self.kl_target - kl
-        loss = rec + self.lambda_ * residual + residual.pow(2)
+        loss = rec + self.lambda_ * residual
         loss.backward()
         optimizer.step()
         with torch.no_grad():
             self.lambda_ = max(
-                0.0,
+                0.1,
                 self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
             )
 

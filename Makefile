@@ -2,7 +2,7 @@
 horizon = 20
 
 main:
-	python -m experiments.main --verbose --horizon 50 --learning_rate 0.00001 --hidden_dim 32 --layers 2 --beta 0.5 --batch_siz 64 --reverse 
+	python -m experiments.main --verbose --horizon 50 --learning_rate 0.001 --hidden_dim 32 --layers 2 --beta 0.5 --batch_siz 64 --reverse 
 
 
 upper:
