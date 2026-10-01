@@ -294,6 +294,18 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 5e-2,
                 log=True,
             ),
+            lr_lambda=trial.suggest_float(
+                "lr_lambda",
+                1e-5,
+                1e-1,
+                log=True,
+            ),
+            rho=trial.suggest_float(
+                "rho",
+                1e-2,
+                1e1,
+                log=True,
+            ),
             weight_decay=trial.suggest_float(
                 "weight_decay",
                 1e-7,
