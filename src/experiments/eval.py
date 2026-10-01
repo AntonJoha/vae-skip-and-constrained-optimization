@@ -24,6 +24,14 @@ nll_loss = nn.GaussianNLLLoss(reduction="none")
 mse_loss = nn.MSELoss(reduction="none")
 
 
+def _ensure_sequence(x: torch.Tensor) -> torch.Tensor:
+    return x.unsqueeze(-1) if x.ndim == 2 else x
+
+
+def _mean_metric(values: list[torch.Tensor | float]) -> float:
+    return sum(float(v) for v in values) / max(1, len(values))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Evaluate a saved tDLGM checkpoint on the validation split."
@@ -52,129 +60,101 @@ def parse_args() -> argparse.Namespace:
 def nll_position(
     mean: torch.Tensor, y: torch.Tensor, logvar: torch.Tensor
 ) -> torch.Tensor:
-
-    if mean.ndim == 2:
-        mean = mean.unsqueeze(-1)
-    if logvar.ndim == 2:
-        logvar = logvar.unsqueeze(-1)
-    if y.ndim == 2:
-        y = y.unsqueeze(-1)
-    m = mean
-    v = logvar.exp()
-
-    loss = nll_loss(m, y, v).mean(dim=(0, 2))
-    return loss
+    mean = _ensure_sequence(mean)
+    logvar = _ensure_sequence(logvar)
+    y = _ensure_sequence(y)
+    return nll_loss(mean, y, logvar.exp()).mean(dim=(0, 2))
 
 
 def fde_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    if mean.ndim == 2:
-        mean = mean.unsqueeze(-1)
-    if y.ndim == 2:
-        y = y.unsqueeze(-1)
-    loss = torch.linalg.vector_norm(mean[:,-1,:] - y[:,-1,:], dim=-1).mean()
-    return loss
+    mean = _ensure_sequence(mean)
+    y = _ensure_sequence(y)
+    return torch.linalg.vector_norm(mean[:, -1, :] - y[:, -1, :], dim=-1).mean()
+
 
 def ade_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    if mean.ndim == 2:
-        mean = mean.unsqueeze(-1)
-    if y.ndim == 2:
-        y = y.unsqueeze(-1)
-    loss = torch.linalg.vector_norm(mean - y, dim=-1).mean()
-    return loss
+    mean = _ensure_sequence(mean)
+    y = _ensure_sequence(y)
+    return torch.linalg.vector_norm(mean - y, dim=-1).mean()
 
 
 def mse_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    if mean.ndim == 2:
-        mean = mean.unsqueeze(-1)
-    if y.ndim == 2:
-        y = y.unsqueeze(-1)
-    m = mean
-    loss = mse_loss(m, y).mean(dim=(0, 2))
-    return loss
+    mean = _ensure_sequence(mean)
+    y = _ensure_sequence(y)
+    return mse_loss(mean, y).mean(dim=(0, 2))
 
 
-@torch.no_grad()
-def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
+def _evaluate_sequence_model(
+    loader: DataLoader,
+    forward_fn,
+    loss_fn,
+    scaler,
+) -> dict:
+    results = {
+        "x": [],
+        "x_scaled": [],
+        "mean": [],
+        "logvar": [],
+        "mean_scaled": [],
+        "logvar_scaled": [],
+        "y": [],
+        "y_scaled": [],
+        "losses": [],
+        "losses_position": [],
+        "mse_losses": [],
+        "mse_losses_position": [],
+        "ade_losses_position": [],
+        "ade_losses": [],
+        "fde_losses_position": [],
+        "fde_losses": [],
+    }
 
-    model.eval()
-    losses = []
-
-    mse_losses = []
-    mse_losses_position = []
-    losses_position = []
-    ade_losses_position = []
-    fde_losses_position = []
-    fde_losses = []
-    ade_losses = []
-
-
-
-
-    xs, means, logvars, ys = [], [], [], []
-    ys_scaled = []
-    xs_scaled = []
-    means_scaled = []
-    logvars_scaled = []
-    for x, y in loader:
-        x = x.to(device)
-        y = y.to(device)
-        mean, logvar = model(x)
-        
+    for batch in loader:
+        x, y = unpack_batch(batch)
+        mean, logvar = forward_fn(x, y)
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
         logvar_scaled = scaler[1](logvar)
         x_scaled = scaler[0](x)
 
-        ys_scaled.append(y_scaled)
-        xs_scaled.append(x_scaled)
-        means_scaled.append(mean_scaled)
-        logvars_scaled.append(logvar_scaled)
+        results["x"].append(x)
+        results["x_scaled"].append(x_scaled)
+        results["mean"].append(mean)
+        results["logvar"].append(logvar)
+        results["mean_scaled"].append(mean_scaled)
+        results["logvar_scaled"].append(logvar_scaled)
+        results["y"].append(y)
+        results["y_scaled"].append(y_scaled)
 
-        losses.append(float(model.loss(mean, y.squeeze(-1), logvar.exp())))
-        losses_position.append(nll_position(mean, y.squeeze(-1), logvar))
+        results["losses"].append(float(loss_fn(mean, y.squeeze(-1), logvar.exp())))
+        results["losses_position"].append(nll_position(mean, y.squeeze(-1), logvar))
+        results["mse_losses"].append(float(mse_loss(mean, y.squeeze(-1)).mean()))
+        results["mse_losses_position"].append(mse_position(mean, y.squeeze(-1)))
+        results["ade_losses_position"].append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
+        results["ade_losses"].append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
+        results["fde_losses_position"].append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
+        results["fde_losses"].append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
 
-        mse_losses.append(float(mse_loss(mean, y.squeeze(-1)).mean()))
-        mse_losses_position.append(mse_position(mean, y.squeeze(-1)))
+    results["loss"] = _mean_metric(results["losses"])
+    results["loss_position"] = _mean_metric(results["losses_position"])
+    results["mse_loss"] = _mean_metric(results["mse_losses"])
+    results["mse_loss_position"] = _mean_metric(results["mse_losses_position"])
+    results["ade_loss_position"] = _mean_metric(results["ade_losses_position"])
+    results["ade_loss"] = _mean_metric(results["ade_losses"])
+    results["fde_loss_position"] = _mean_metric(results["fde_losses_position"])
+    results["fde_loss"] = _mean_metric(results["fde_losses"])
+    return results
 
-        ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
-        ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-        fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
-        fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
 
-
-
-        xs.append(x)
-        means.append(mean)
-        logvars.append(logvar)
-        ys.append(y)
-
-    return {
-        "x": xs,
-        "x_scaled": xs_scaled,
-        "mean": means,
-        "logvar": logvars,
-        "mean_scaled": means_scaled,
-        "logvar_scaled": logvars_scaled,
-        "y": ys,
-        "y_scaled": ys_scaled,
-        "losses": losses,
-        "losses_position": losses_position,
-        "loss": sum(losses) / max(1, len(losses)),
-        "loss_position": sum(losses_position) / max(1, len(losses_position)),
-        "mse_loss": sum(mse_losses) / max(1, len(mse_losses)),
-        "mse_losses": mse_losses,
-        "mse_losses_position": mse_losses_position,
-        "mse_loss_position": sum(mse_losses_position)
-        / max(1, len(mse_losses_position)),
-        "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
-        "ade_losses": ade_losses,
-        "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
-        "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
-        "fde_losses": fde_losses,
-        "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
-    }
+@torch.no_grad()
+def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
+    model.eval()
+    return _evaluate_sequence_model(
+        loader,
+        forward_fn=lambda x, _y: model(x),
+        loss_fn=model.loss,
+        scaler=scaler,
+    )
 
 
 @torch.no_grad()
@@ -182,84 +162,12 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
     logger.info("Evaluating tDLGM model...")
 
     model.eval()
-    losses = []
-
-    mse_losses = []
-    mse_losses_position = []
-    losses_position = []
-    ade_losses_position = []
-    fde_losses_position = []
-    fde_losses = []
-    ade_losses = []
-
-
-
-
-    xs, means, logvars, ys = [], [], [], []
-    ys_scaled = []
-    xs_scaled = []
-    means_scaled = []
-    logvars_scaled = []
-    for batch in loader:
-        x, y = unpack_batch(batch)
-
-        mean, logvar, *_ = model(x)
-
-        mean_scaled = scaler[0](mean)
-        y_scaled = scaler[0](y)
-        logvar_scaled = scaler[1](logvar)
-        x_scaled = scaler[0](x)
-
-        ys_scaled.append(y_scaled)
-        xs_scaled.append(x_scaled)
-        means_scaled.append(mean_scaled)
-        logvars_scaled.append(logvar_scaled)
-
-        losses.append(float(model.nllLoss(mean, y.squeeze(-1), logvar.exp())))
-        losses_position.append(nll_position(mean, y.squeeze(-1), logvar))
-
-        mse_losses.append(float(mse_loss(mean, y.squeeze(-1)).mean()))
-        mse_losses_position.append(mse_position(mean, y.squeeze(-1)))
-
-        ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
-        ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-        fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
-        fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-
-
-
-        xs.append(x)
-        means.append(mean)
-        logvars.append(logvar)
-        ys.append(y)
-
-    return {
-        "x": xs,
-        "x_scaled": xs_scaled,
-        "mean": means,
-        "logvar": logvars,
-        "mean_scaled": means_scaled,
-        "logvar_scaled": logvars_scaled,
-        "y": ys,
-        "y_scaled": ys_scaled,
-        "losses": losses,
-        "losses_position": losses_position,
-        "loss": sum(losses) / max(1, len(losses)),
-        "loss_position": sum(losses_position) / max(1, len(losses_position)),
-        "mse_loss": sum(mse_losses) / max(1, len(mse_losses)),
-        "mse_losses": mse_losses,
-        "mse_losses_position": mse_losses_position,
-        "mse_loss_position": sum(mse_losses_position)
-        / max(1, len(mse_losses_position)),
-        "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
-        "ade_losses": ade_losses,
-        "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
-        "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
-        "fde_losses": fde_losses,
-        "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
-    }
+    return _evaluate_sequence_model(
+        loader,
+        forward_fn=lambda x, y: model(x),
+        loss_fn=model.nllLoss,
+        scaler=scaler,
+    )
 
 
 def remove_pytorch(results: dict) -> dict:
