@@ -194,6 +194,9 @@ def train_model(
                 kl_loss += t_kl_loss
                 recon_loss_p += t_recon_loss_p
                 kl_loss_p += t_kl_loss_p
+        model.outer_train_step(train_loader)
+
+                
         post = evaluate_posterior(model, train_loader)
         prior = evaluate(model, train_loader)
         val_loss = evaluate(model, val_loader)

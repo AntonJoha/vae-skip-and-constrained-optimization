@@ -1,5 +1,5 @@
 import logging
-
+import numpy as np
 import torch
 from torch import nn
 
@@ -109,6 +109,10 @@ class Model(nn.Module):
         self.lambda_ = 1.0
         self.lambda_lr = 1e-4
         self.kl_target = 0.5
+        self.rho = self.config.rho
+        self.rho_lr = self.config.rho_scaler
+        self.reduction_threshold = self.config.reduction_threshold
+        self.old_violation = torch.inf
 
     def make_skips(self, num_layers):
         layers = []
@@ -219,6 +223,35 @@ class Model(nn.Module):
         return mean, logvar
 
 
+    def outer_train_step(self, dataloader):
+
+
+        expected_kl = 0
+        for x, y in dataloader:
+            x = x.to(self.config.device)
+            y = y.to(self.config.device)
+            _, kl = self.compute_losses(x, y, prior=False)
+            expected_kl += kl
+        expected_kl /= len(dataloader)
+
+        residual = self.kl_target - expected_kl
+        constrain_violation = max(0.0, residual)
+        if constrain_violation > self.reduction_threshold*self.old_violation:
+            self.rho = min(self.rho_lr * self.rho, self.config.rho_max)
+        self.old_violation = constrain_violation
+        self.lambda_ = min(max(
+            0.0,
+            self.lambda_ + self.lambda_lr * residual,
+        ), 50)
+        log.info(
+            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f",
+            expected_kl,
+            residual,
+            self.lambda_,
+            self.rho,
+        )
+
+
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
@@ -234,16 +267,18 @@ class Model(nn.Module):
             combined_posterior_list=combined_posterior_list,
         )
 
+        _, prior_kl = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=prior_list,
+            combined_posterior_list=[t.detach() for t in combined_posterior_list],
+        )
         residual = self.kl_target - kl
-        loss = rec + self.lambda_ * residual
+        loss = rec + self.lambda_ * residual + 0.5 * self.rho * residual ** 2 + prior_kl
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            self.lambda_ = max(
-                0.1,
-                self.lambda_ + self.lambda_lr * residual.detach().mean().item(),
-            )
-
+        
         return float(loss.detach())
 
 
