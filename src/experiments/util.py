@@ -74,6 +74,8 @@ class SeriesConfig(BaselineConfig):
     beta: float = 0.565
     alpha: float = 1e-2
     weight_decay: float = 1e-5
+    rho_scaler: float = 1.02
+    reduction_threshold: float = 0.95
 
     std: float = 0.2
 
