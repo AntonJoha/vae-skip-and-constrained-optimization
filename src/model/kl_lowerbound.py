@@ -255,11 +255,11 @@ class Model(nn.Module):
         self.old_violation = constrain_violation
         self.lambda_ = min(max(
             0.0,
-            self.lambda_ + self.lambda_lr * residual,
+            self.lambda_ + self.lambda_lr * residual.mean().item()
         ), 50)
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f",
-            expected_kl,
+            expected_kl.mean().item(),
             residual.mean().item(),
             self.lambda_,
             self.rho,
