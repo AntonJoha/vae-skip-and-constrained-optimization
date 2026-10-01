@@ -100,7 +100,11 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
         model = Reg_Model(runtime).to(device)
 
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
-    optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
+    optimizer = Adam(
+        model.parameters(),
+        lr=runtime.learning_rate,
+        weight_decay=runtime.weight_decay,
+    )
     if runtime.verbose:
         log.info(
             "Parameters: %s",
@@ -272,56 +276,86 @@ def train_model(
 
 
 def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
+    uses_augmented_model = not any(
+        (
+            base_runtime.lower,
+            base_runtime.upper,
+            base_runtime.basic,
+            base_runtime.vrnn,
+            base_runtime.vae_baseline,
+            base_runtime.baseline,
+        )
+    )
+    uses_constrained_model = base_runtime.lower or uses_augmented_model
+
+    if uses_constrained_model:
+        hidden_dims = [32, 64, 128, 256]
+        layer_range = (1, 4)
+        batch_sizes = [16, 32, 64]
+        weight_decay_range = (1e-7, 1e-3)
+        reduction_threshold_range = (0.8, 0.99)
+        beta_range = (0.05, 1.0) if base_runtime.lower else (0.05, 1.5)
+        rho_range = (1e-2, 1e1) if base_runtime.lower else (1e-1, 1e1)
+        learning_rate_range = (
+            (1e-4, 5e-3) if base_runtime.lower else (1e-5, 3e-3)
+        )
+    else:
+        hidden_dims = [32, 64, 128, 256, 512]
+        layer_range = (2, 6)
+        batch_sizes = [16, 32, 64, 128]
+        weight_decay_range = (1e-7, 1e-2)
+        reduction_threshold_range = (0.8, 0.99)
+        beta_range = (1e-2, 1.0)
+        rho_range = (1e-2, 1e1)
+        learning_rate_range = (1e-6, 5e-2)
+
     def objective(trial: optuna.Trial) -> float:
         runtime = replace(
             base_runtime,
             hidden_dim=trial.suggest_categorical(
                 "hidden_dim",
-                [ 32, 64, 128, 256, 512],
+                hidden_dims,
             ),
             layers=trial.suggest_int(
                 "layers",
-                2,
-                6,
+                *layer_range,
             ),
             batch_size=trial.suggest_categorical(
                 "batch_size",
-                [16, 32, 64, 128],
+                batch_sizes,
             ),
             learning_rate=trial.suggest_float(
                 "learning_rate",
-                1e-6,
-                5e-2,
+                *learning_rate_range,
                 log=True,
             ),
             lr_lambda=trial.suggest_float(
                 "lr_lambda",
                 1e-5,
-                1e-1,
+                1e-2 if uses_constrained_model else 1e-1,
                 log=True,
-            ),
+            ) if not base_runtime.lower else base_runtime.lr_lambda,
             rho=trial.suggest_float(
                 "rho",
-                1e-2,
-                1e1,
+                *rho_range,
                 log=True,
             ),
             reduction_threshold=trial.suggest_float(
                 "reduction_threshold",
-                0.8,
-                0.99,
+                *reduction_threshold_range,
             ),
             weight_decay=trial.suggest_float(
                 "weight_decay",
-                1e-7,
-                1e-2,
+                *weight_decay_range,
                 log=True,
             ),
             beta=trial.suggest_float(
                 "beta",
-                1e-2,
-                1),
-            skip_connection=trial.suggest_categorical("skip_connection", [True, False])
+                *beta_range,
+            ),
+            skip_connection=trial.suggest_categorical(
+                "skip_connection", [True, False]
+            ),
         )
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
