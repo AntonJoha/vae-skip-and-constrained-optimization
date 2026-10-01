@@ -186,9 +186,9 @@ class Model(nn.Module):
         self.kl_target = float(self.config.beta)
         self.basic = config.vae_baseline
         self.rho = float(self.config.rho)
-        print("Setting rho", self.rho)
-        if not math.isfinite(self.rho) or self.rho <= 0:
-            raise ValueError("rho must be a finite positive value")
+        self.rho_scaler = float(self.config.rho_scaler)
+        self.reducion_threshold = float(self.config.reduction_threshold)
+        self.previous_kl = 0.0
         self.scaled_lambda = 1.0 / self.rho
 
     def make_skips(self, num_layers):
@@ -216,7 +216,7 @@ class Model(nn.Module):
 
     def _multiply_gaussians(self, mean1: torch.Tensor, logvar1: torch.Tensor, mean2: torch.Tensor, logvar2: torch.Tensor):
         
-        
+        return mean1, logvar1  # We do not want Ladder VAE now.
         # https://ccrma.stanford.edu/~jos/sasp/Product_Two_Gaussian_PDFs.html
         # Implementation using the log-precision (log-tau) trick for numerical stability
         log_tau1, log_tau2 = -logvar1, -logvar2
@@ -416,6 +416,7 @@ class Model(nn.Module):
         )
 
         residual = layered_kl - self._layer_target(layered_kl)
+        
         kl_constraint = (self.scaled_lambda * residual).mean() + (self.rho*residual.pow(2)).mean()
 
 
@@ -425,6 +426,8 @@ class Model(nn.Module):
             + self.config.lr_lambda
             * residual.mean().detach()
         )
+        if self.previous_kl * self.reducion_threshold < residual.mean().detach():
+            self.rho = self.rho * self.rho_scaler
 
         """
         print(
