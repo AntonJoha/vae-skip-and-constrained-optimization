@@ -5,8 +5,6 @@ from torch import nn
 
 from experiments.util import SeriesConfig
 
-print("LOADING THIS")
-#torch.autograd.set_detect_anomaly(True)
 log = logging.getLogger(__name__)
 
 
@@ -287,4 +285,3 @@ class Model(nn.Module):
         y = y.to(self.device)
         mean, logvar = self(x)
         return float(self.nllLoss(mean, self._target(y, mean), logvar.exp()))
-

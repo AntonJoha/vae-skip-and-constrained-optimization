@@ -27,6 +27,14 @@ from model import VRNN, Basic, Lower_Model, Reg_Model, Upper_Model, VAE_Baseline
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
 
+MODEL_FACTORIES = (
+    (lambda runtime: runtime.vae_baseline, VAE_Baseline_Model),
+    (lambda runtime: runtime.vrnn, VRNN),
+    (lambda runtime: runtime.basic, Basic),
+    (lambda runtime: runtime.upper, Upper_Model),
+    (lambda runtime: runtime.lower, Lower_Model),
+)
+
 
 def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     x, y = batch
@@ -84,24 +92,13 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
-    if runtime.vae_baseline:
-        print("VAE baseline")
-        model = VAE_Baseline_Model(runtime).to(device)
-    elif runtime.vrnn:
-        print("VRNN")
-        model = VRNN(runtime).to(device)
-    elif runtime.basic:
-        print("Basic")
-        model = Basic(runtime).to(device)
-    elif runtime.upper:
-        print("Upper")
-        model = Upper_Model(runtime).to(device)
-    elif runtime.lower:
-        print("Lower")
-        model = Lower_Model(runtime).to(device)
-    else:   
-        print("Reg")
+    for predicate, factory in MODEL_FACTORIES:
+        if predicate(runtime):
+            model = factory(runtime).to(device)
+            break
+    else:
         model = Reg_Model(runtime).to(device)
+
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
     optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
     if runtime.verbose:
@@ -168,45 +165,35 @@ def train_model(
     for epoch in range(train_epochs):
         log.info("Starting epoch %03d/%03d", epoch + 1, train_epochs)
         epoch_losses = []
-        recon_loss = kl_loss = consistency = 0.0
-        recon_loss_p = kl_loss_p = consistency_p = 0.0
         model.set_epoch(epoch)
 
         for batch in train_loader:
             x, y = unpack_batch(batch)
             epoch_losses.append(model.train_step(x, y, optimizer))
-            model.train_step(x, y, optimizer)
-            if runtime.verbose:
-                train_metrics = getattr(model, "last_train_metrics", None)
-                if train_metrics is None:
-                    t_recon_loss, t_kl_loss = model.compute_losses(
-                        x,
-                        y,
-                        prior=False,
-                    )
-                    layered_kl = model.get_layered_kl(x, y)
-                else:
-                    t_recon_loss = train_metrics["posterior_recon"]
-                    t_kl_loss = train_metrics["posterior_kl"]
-                    layered_kl = train_metrics["layered_kl"]
-                t_recon_loss_p, t_kl_loss_p = model.compute_losses(x, y)
-                recon_loss += t_recon_loss
-                kl_loss += t_kl_loss
-                recon_loss_p += t_recon_loss_p
-                kl_loss_p += t_kl_loss_p
+
         model.outer_train_step(train_loader)
 
-                
-        post = evaluate_posterior(model, train_loader)
-        prior = evaluate(model, train_loader)
         val_loss = evaluate(model, val_loader)
-        val_posterior = None
-        layered_kl = None
         if runtime.verbose:
+            mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
             val_posterior = evaluate_posterior(model, val_loader)
-            layered_kl = evaluate_kl(model, val_loader)
+            post = evaluate_posterior(model, train_loader)
+            prior = evaluate(model, train_loader)
+            layered_kl = evaluate_kl(model, train_loader)
+            log.info("========== Epoch %03d =========", epoch + 1)
+            log.info(
+                " Train loss: %.5f: NLL on val set: %.5f, Posterior NLL on val: %.5f",
+                mean_loss,
+                val_loss,
+                val_posterior,
+            )
+            log.info(
+                " Posterior NLL on train: %.5f",
+                post,
+            )
+            log.info(" Prior NLL on train: %.5f", prior)
+            log.info(" Layered KL: %s", layered_kl)
         scheduler.step(val_loss)
-
 
         if reason := should_stop_training(before, val_loss):
             log.warning(
@@ -219,24 +206,6 @@ def train_model(
                 raise TrialPruned()
             stopped_due_to_divergence = True
             break
-
-        if runtime.verbose:
-            train_batches = max(1, len(train_loader))
-            mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
-            recon_loss /= train_batches
-            kl_loss /= train_batches
-            consistency /= train_batches
-            recon_loss_p /= train_batches
-            kl_loss_p /= train_batches
-            consistency_p /= train_batches
-            
-            log.info("========== Epoch %03d =========", epoch + 1)
-            log.info(" Train loss: %.5f: NLL on val set: %.5f, Posterior NLL on val: %.5f", mean_loss, val_loss, val_posterior)
-            #log.info(" Posterior: NLL %.5f: kl_loss %.5f:", recon_loss, kl_loss)
-            #log.info(" Prior: NLL %.5f: kl_loss %.5f:", recon_loss_p, kl_loss_p)
-            log.info(" Posterior: NLL %.5f: kl_loss %.5f:", post, kl_loss)
-            log.info(" Prior: NLL %.5f: kl_loss %.5f:", prior, kl_loss_p)
-            log.info(" Layered KL: %s", layered_kl)
 
         if val_loss < best_val:
             best_val = val_loss
