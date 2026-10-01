@@ -187,9 +187,11 @@ class Model(nn.Module):
         self.basic = config.vae_baseline
         self.rho = float(self.config.rho)
         self.rho_scaler = float(self.config.rho_scaler)
-        self.reducion_threshold = float(self.config.reduction_threshold)
+        self.reduction_threshold = float(self.config.reduction_threshold)
         self.previous_kl = 0.0
-        self.scaled_lambda = 1.0 / self.rho
+        self.lambda_ = 1.0 / self.rho
+        self.old_violation = torch.inf
+        self.lambda_lr = float(self.config.lr_lambda)
 
     def make_skips(self, num_layers):
         layers = []
@@ -395,6 +397,46 @@ class Model(nn.Module):
         return result
 
 
+    def outer_train_step(self, dataloader):
+
+        expected_kl = None
+
+        for x, y in dataloader:
+            x = x.to(self.config.device)
+            y = y.to(self.config.device)
+
+            kl = self.get_layered_kl(x, y)
+            residual = kl - self._layer_target(kl)
+            if expected_kl is None:
+                expected_kl = residual
+            else:
+                expected_kl += residual
+        expected_kl /= len(dataloader)
+
+        residual = self.kl_target - expected_kl
+        print(residual)
+        constrain_violation = residual.pow(2).mean()
+
+        if constrain_violation > self.reduction_threshold*self.old_violation:
+            self.rho = min(self.rho_lr * self.rho, self.config.rho_max)
+
+        self.old_violation = constrain_violation
+        self.lambda_ = min(max(
+            -50,
+            self.lambda_ + self.lambda_lr * residual.mean().item()
+        ), 50)
+        log.info(
+            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f",
+            expected_kl,
+            residual.mean().item(),
+            self.lambda_,
+            self.rho,
+        )
+
+
+
+
+
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
@@ -417,17 +459,10 @@ class Model(nn.Module):
 
         residual = layered_kl - self._layer_target(layered_kl)
         
-        kl_constraint = (self.scaled_lambda * residual).mean() + (self.rho*residual.pow(2)).mean()
+        kl_constraint = (self.lambda_ * residual).mean() + (self.rho*residual.pow(2)).mean()
 
 
         loss = rec + kl_constraint
-        self.scaled_lambda = (
-            self.scaled_lambda
-            + self.config.lr_lambda
-            * residual.mean().detach()
-        )
-        if self.previous_kl * self.reducion_threshold < residual.mean().detach():
-            self.rho = self.rho * self.rho_scaler
 
         """
         print(
@@ -509,7 +544,7 @@ class Model(nn.Module):
         )
         return float(rec), float(kl)
     
-    @torch.no_grad()
+
     def get_layered_kl(self, x, y):
         _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
         return self._layered_kl(prior_list, combined_posterior_list).detach()

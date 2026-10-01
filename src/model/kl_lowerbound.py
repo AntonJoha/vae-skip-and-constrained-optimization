@@ -223,19 +223,33 @@ class Model(nn.Module):
         return mean, logvar
 
 
+
+    def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        return layered_kl.new_full(
+            layered_kl.shape,
+            float(self.kl_target) / max(1, layered_kl.numel()),
+        )
+
     def outer_train_step(self, dataloader):
 
+        expected_kl = None
 
-        expected_kl = 0
         for x, y in dataloader:
             x = x.to(self.config.device)
             y = y.to(self.config.device)
-            _, kl = self.compute_losses(x, y, prior=False)
-            expected_kl += kl
+
+            kl = self.get_layered_kl(x, y)
+            residual = kl - self._layer_target(kl)
+            if expected_kl is None:
+                expected_kl = residual
+            else:
+                expected_kl += residual
         expected_kl /= len(dataloader)
 
+
         residual = self.kl_target - expected_kl
-        constrain_violation = max(0.0, residual)
+        
+        constrain_violation = max(0.0, residual.pow(2).mean().item())
         if constrain_violation > self.reduction_threshold*self.old_violation:
             self.rho = min(self.rho_lr * self.rho, self.config.rho_max)
         self.old_violation = constrain_violation
@@ -246,7 +260,7 @@ class Model(nn.Module):
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f",
             expected_kl,
-            residual,
+            residual.mean().item(),
             self.lambda_,
             self.rho,
         )
@@ -302,6 +316,22 @@ class Model(nn.Module):
                 kl_loss += kl.sum(dim=-1).mean()
 
         return recon_loss, kl_loss
+
+    def _layered_kl(self, prior_list, combined_posterior_list):
+        kl_losses = []
+        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            kl = 0.5 * (
+                p_logvar - q_logvar
+                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
+                  / torch.exp(p_logvar)
+                - 1
+            )
+            kl_losses.append(kl.sum(dim=-1).mean())
+
+
 
 
     @torch.no_grad()
