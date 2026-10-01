@@ -306,6 +306,11 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e1,
                 log=True,
             ),
+            reduction_threshold=trial.suggest_float(
+                "reduction_threshold",
+                0.8,
+                0.99,
+            ),
             weight_decay=trial.suggest_float(
                 "weight_decay",
                 1e-7,
