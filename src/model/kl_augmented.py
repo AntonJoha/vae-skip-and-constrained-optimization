@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 from torch import nn
@@ -184,7 +185,10 @@ class Model(nn.Module):
 
         self.kl_target = float(self.config.beta)
         self.basic = config.vae_baseline
-        self.lambda_ = 1.0
+        self.rho = float(self.config.rho)
+        if not math.isfinite(self.rho) or self.rho <= 0:
+            raise ValueError("rho must be a finite positive value")
+        self.scaled_lambda = 1.0 / self.rho
 
     def make_skips(self, num_layers):
         layers = []
@@ -412,12 +416,27 @@ class Model(nn.Module):
 
         residual = layered_kl - self._layer_target(layered_kl)
 
-        kl_constraint = (residual * self.lambda_).mean()
+        kl_constraint = 0.5 * self.rho * (
+            (residual + self.scaled_lambda).pow(2).mean()
+            - self.scaled_lambda**2
+        )
+        loss = rec + kl_constraint
 
-        loss = rec + kl_constraint + residual.pow(2).mean()
-
-        self.lambda_ = self.lambda_ + self.config.lr_lambda *0.1* residual.mean().detach()
-        print("Lambda: ", self.lambda_.item(), " Residual: ", residual.mean().item(), " KL constraint: ", kl_constraint.item())
+        self.scaled_lambda = (
+            self.scaled_lambda
+            + self.config.lr_lambda
+            * 0.1
+            / self.rho
+            * residual.mean().detach()
+        )
+        print(
+            "Scaled lambda: ",
+            self.scaled_lambda.item(),
+            " Residual: ",
+            residual.mean().item(),
+            " KL constraint: ",
+            kl_constraint.item(),
+        )
 
         if self.config.grad_diagnostics:
             # Gradient diagnostics
@@ -511,4 +530,3 @@ class Model(nn.Module):
 
 
         return torch.stack(kl_losses)
-
