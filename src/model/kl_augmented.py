@@ -8,6 +8,7 @@ from experiments.util import SeriesConfig
 
 log = logging.getLogger(__name__)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 TDLGMConfig = SeriesConfig
 
@@ -327,9 +328,6 @@ class Model(nn.Module):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
         self.kl_target = float(self.config.beta)
-        self.kl_target = 0
-        if not self.basic:
-            self.kl_target = float(self.config.beta)/((self.epoch+1)**0.5)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
@@ -399,23 +397,17 @@ class Model(nn.Module):
 
     def outer_train_step(self, dataloader):
 
-        expected_kl = None
+        expected_kl = 0
 
         for x, y in dataloader:
-            x = x.to(self.config.device)
-            y = y.to(self.config.device)
+            x = x.to(device)
+            y = y.to(device)
 
-            kl = self.get_layered_kl(x, y)
-            residual = kl - self._layer_target(kl)
-            if expected_kl is None:
-                expected_kl = residual
-            else:
-                expected_kl += residual
+            expected_kl += self.get_layered_kl(x, y).mean()
         expected_kl /= len(dataloader)
 
-        residual = self.kl_target - expected_kl
-        print(residual)
-        constrain_violation = residual.pow(2).mean()
+        residual = expected_kl - self.kl_target
+        constrain_violation = residual.pow(2)
 
         if constrain_violation > self.reduction_threshold*self.old_violation:
             self.rho *= self.rho_scaler
@@ -423,12 +415,12 @@ class Model(nn.Module):
         self.old_violation = constrain_violation
         self.lambda_ = min(max(
             -50,
-            self.lambda_ + self.lambda_lr * residual.mean().item()
+            self.lambda_ + self.rho*residual
         ), 50)
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f",
-            expected_kl.mean().item(),
-            residual.mean().item(),
+            expected_kl.item(),
+            residual.item(),
             self.lambda_,
             self.rho,
         )
@@ -457,10 +449,14 @@ class Model(nn.Module):
             combined_posterior_list,
         )
 
-        residual = layered_kl - self._layer_target(layered_kl)
-        
-        kl_constraint = (self.lambda_ * residual).mean() + (self.rho*residual.pow(2)).mean()
+        total_kl = layered_kl.sum()
 
+        residual = total_kl - self.kl_target
+
+        kl_constraint = (
+            self.lambda_ * residual
+            + 0.5 * self.rho * residual.pow(2)
+        )
 
         loss = rec + kl_constraint
 

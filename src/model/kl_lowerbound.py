@@ -5,6 +5,9 @@ from torch import nn
 
 from experiments.util import SeriesConfig
 
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 log = logging.getLogger(__name__)
 
 TDLGMConfig = SeriesConfig
@@ -143,6 +146,7 @@ class Model(nn.Module):
         mean2: torch.Tensor,
         logvar2: torch.Tensor,
     ):
+        return mean1, logvar1
         precision1 = torch.exp(-logvar1)
         precision2 = torch.exp(-logvar2)
         combined_precision = precision1 + precision2
@@ -235,8 +239,8 @@ class Model(nn.Module):
         expected_kl = None
 
         for x, y in dataloader:
-            x = x.to(self.config.device)
-            y = y.to(self.config.device)
+            x = x.to(device)
+            y = y.to(device)
 
             kl = self.get_layered_kl(x, y)
             residual = kl - self._layer_target(kl)
@@ -249,7 +253,7 @@ class Model(nn.Module):
 
         residual = self.kl_target - expected_kl
         
-        constrain_violation = max(0.0, residual.pow(2).mean().item())
+        constrain_violation = max(0.0, residual.mean().item())
         if constrain_violation > self.reduction_threshold*self.old_violation:
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
@@ -272,15 +276,6 @@ class Model(nn.Module):
         self.train()
         optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
-
-        rec, kl = self._compute_losses(
-            y,
-            mean,
-            logvar,
-            prior_list=prior_list,
-            combined_posterior_list=combined_posterior_list,
-        )
-
         _, prior_kl = self._compute_losses(
             y,
             mean,
@@ -288,8 +283,29 @@ class Model(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=[t.detach() for t in combined_posterior_list],
         )
+        prior_kl.backward()
+        optimizer.step()
+
+        optimizer.zero_grad()
+
+
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        rec, kl = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=[t.detach() for t in prior_list],
+            combined_posterior_list=combined_posterior_list,
+        )
+
         residual = self.kl_target - kl
-        loss = rec + self.lambda_ * residual + 0.5 * self.rho * residual ** 2 + prior_kl
+        shifted = self.lambda_ + self.rho * residual
+        al_penalty = (
+        torch.clamp(shifted, min=0.0) ** 2
+        - self.lambda_ ** 2
+        ) / (2.0 * self.rho)
+
+        loss = rec + al_penalty
         loss.backward()
         optimizer.step()
         

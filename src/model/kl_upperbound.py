@@ -145,7 +145,7 @@ class Model(nn.Module):
         mean2: torch.Tensor,
         logvar2: torch.Tensor,
     ):
-        #return mean1, logvar1
+        return mean1, logvar1
         precision1 = torch.exp(-logvar1)
         precision2 = torch.exp(-logvar2)
         combined_precision = precision1 + precision2
@@ -154,6 +154,9 @@ class Model(nn.Module):
         ) / combined_precision
         combined_logvar = -torch.log(combined_precision)
         return combined_mean, combined_logvar
+
+    def outer_train_step(self, data):
+        return
 
     def _latent_pass(self, x, y=None, prior=True):
     
