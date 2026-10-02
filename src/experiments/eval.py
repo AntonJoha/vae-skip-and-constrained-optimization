@@ -93,6 +93,20 @@ def mse_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return loss
 
 
+def wasserstein2_distance(prior: torch.Tensor, posterior: torch.Tensor) -> torch.Tensor:
+    prior_mean, prior_logvar = prior.chunk(2, dim=-1)
+    posterior_mean, posterior_logvar = posterior.chunk(2, dim=-1)
+
+    prior_std = torch.exp(0.5 * prior_logvar)
+    posterior_std = torch.exp(0.5 * posterior_logvar)
+
+    squared_distance = (
+        (prior_mean - posterior_mean).pow(2)
+        + (prior_std - posterior_std).pow(2)
+    ).sum(dim=-1)
+    return torch.sqrt(squared_distance).mean()
+
+
 @torch.no_grad()
 def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
 
@@ -191,6 +205,8 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses_position = []
     fde_losses = []
     ade_losses = []
+    wasserstein2_losses = []
+    wasserstein2_similarity_losses = []
 
 
 
@@ -225,6 +241,14 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
                 "posterior": _split_layers(post_list),
             }
         )
+        wasserstein2_distance_score = sum(
+            wasserstein2_distance(prior_layer, posterior_layer)
+            for prior_layer, posterior_layer in zip(
+                prior_list, post_list, strict=False
+            )
+        ) / max(1, len(prior_list))
+        wasserstein2_losses.append(wasserstein2_distance_score)
+        wasserstein2_similarity_losses.append(1.0 / (1.0 + wasserstein2_distance_score))
 
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
@@ -268,6 +292,12 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mse_loss_posterior": sum(post_mse_losses) / max(1, len(post_mse_losses)),
         "latents_prior_pass": prior_latents,
         "latents_posterior_pass": posterior_latents,
+        "wasserstein2_losses": wasserstein2_losses,
+        "wasserstein2_loss": sum(wasserstein2_losses)
+        / max(1, len(wasserstein2_losses)),
+        "wasserstein2_similarity_losses": wasserstein2_similarity_losses,
+        "wasserstein2_similarity": sum(wasserstein2_similarity_losses)
+        / max(1, len(wasserstein2_similarity_losses)),
         "y_scaled": ys_scaled,
         "losses": losses,
         "losses_position": losses_position,
@@ -356,6 +386,9 @@ def benchmark_model(args, model_path: Path) -> None:
     print(
         f"Test ADE Position Loss: {res['ade_loss_position']:.5f}, Test FDE Position Loss: {res['fde_loss_position']:.5f}, Test ADE Loss: {res['ade_loss']:.5f}, Test FDE Loss: {res['fde_loss']:.5f}"
     )
+    print(
+        f"Wasserstein-2 Distance: {res['wasserstein2_loss']:.5f}, Wasserstein-2 Similarity: {res['wasserstein2_similarity']:.5f}"
+    )
 
     return remove_pytorch(res)
 
@@ -380,4 +413,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
