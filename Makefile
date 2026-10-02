@@ -5,6 +5,9 @@ main:
 	python -m experiments.main --verbose --horizon 50 --learning_rate 0.001 --hidden_dim 32 --layers 2 --beta 0.5 --batch_siz 64 --reverse 
 
 
+bad:
+	python -m experiments.main --verbose --horizon 50 --learning_rate 0.001 --hidden_dim 32 --layers 2 --beta 0.5 --batch_siz 64 --reverse --epochs 1
+
 upper:
 	python -m experiments.main --verbose --horizon 5 --learning_rate 0.0001 --hidden_dim 512 --layers 3 --batch_size 64 --upper --skip_connection --reverse --beta 1
 
@@ -97,4 +100,5 @@ eval_vae_reverse_no_gaussian:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260925-102613.pt
 
 
-
+eval_bad:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochfinal_20261002-132105.pt
