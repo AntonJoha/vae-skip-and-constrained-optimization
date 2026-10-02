@@ -200,10 +200,31 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
     xs_scaled = []
     means_scaled = []
     logvars_scaled = []
+    post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
+    prior_latents, posterior_latents = [], []
     for batch in loader:
         x, y = unpack_batch(batch)
 
         mean, logvar, *_ = model(x)
+
+        _, _, prior_list, _ = model._latent_pass(x, y=None, prior=True)
+        prior_latents.append(_split_layers(prior_list))
+
+        post_mean, post_logvar, post_prior_list, post_list = model._latent_pass(
+            x, y, prior=False
+        )
+        post_means.append(post_mean)
+        post_logvars.append(post_logvar)
+        post_losses.append(
+            float(model.nllLoss(post_mean, y.squeeze(-1), post_logvar.exp()))
+        )
+        post_mse_losses.append(float(mse_loss(post_mean, y.squeeze(-1)).mean()))
+        posterior_latents.append(
+            {
+                "prior": _split_layers(post_prior_list),
+                "posterior": _split_layers(post_list),
+            }
+        )
 
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
@@ -241,6 +262,12 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mean_scaled": means_scaled,
         "logvar_scaled": logvars_scaled,
         "y": ys,
+        "mean_posterior": post_means,
+        "logvar_posterior": post_logvars,
+        "loss_posterior": sum(post_losses) / max(1, len(post_losses)),
+        "mse_loss_posterior": sum(post_mse_losses) / max(1, len(post_mse_losses)),
+        "latents_prior_pass": prior_latents,
+        "latents_posterior_pass": posterior_latents,
         "y_scaled": ys_scaled,
         "losses": losses,
         "losses_position": losses_position,
@@ -260,6 +287,14 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
     }
+
+
+def _split_layers(layers: list) -> list:
+    out = []
+    for layer in layers:
+        mean, logvar = layer.chunk(2, dim=-1)
+        out.append({"mean": mean, "logvar": logvar})
+    return out
 
 
 def remove_pytorch(results: dict) -> dict:
