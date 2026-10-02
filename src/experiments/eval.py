@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -191,6 +192,33 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
         break
 
 
+def _load_tdlgm_state_dict(model: nn.Module, model_state: dict) -> None:
+    current_state = model.state_dict()
+    compatible_state = {}
+    legacy_mlp_key = re.compile(
+        r"^(model|(?:downwards_list|upwards_list)\.\d+)\.(2|4)\.(weight|bias)$"
+    )
+    current_indices = {"2": "3", "4": "6"}
+
+    for key, value in model_state.items():
+        if key in current_state:
+            compatible_state[key] = value
+            continue
+
+        match = legacy_mlp_key.fullmatch(key)
+        if match:
+            prefix, index, parameter = match.groups()
+            current_key = f"{prefix}.{current_indices[index]}.{parameter}"
+            if (
+                current_key in current_state
+                and current_state[current_key].shape == value.shape
+            ):
+                key = current_key
+        compatible_state[key] = value
+
+    model.load_state_dict(compatible_state)
+
+
 def benchmark_model(args, model_path: Path) -> None:
     _runtime, model_config, model_state, _model_class = load_checkpoint(model_path)
 
@@ -215,7 +243,7 @@ def benchmark_model(args, model_path: Path) -> None:
         else:
             model = Reg_Model(model_config).to(device)
 
-        model.load_state_dict(model_state)
+        _load_tdlgm_state_dict(model, model_state)
         _, _, test_loader = make_dataloaders(eval_config)
         res = evaluate_tdlgm(model, test_loader, scaler)
     elif model_config.model_name == "baseline":
