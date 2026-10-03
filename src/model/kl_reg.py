@@ -13,7 +13,7 @@ class Model(KLBaseModel):
     state_dropout = 0.0
     layer_dropout = 0.0
     logvar_clamp = None
-    combine_gaussians_mode = "product"
+    combine_gaussian = False
     posterior_reduce = "last"
     reverse_posterior_list = False
 

@@ -109,8 +109,6 @@ class KLBaseModel(nn.Module):
     posterior_reduce = "last"
     prior_reduce = "last"
     reverse_posterior_list = False
-    posterior_layers_attr = "upwards_list"
-    prior_layers_attr = "downwards_list"
 
     def __init__(self, config: TDLGMConfig):
         super().__init__()
@@ -140,10 +138,10 @@ class KLBaseModel(nn.Module):
         self.to_output = nn.Linear(
             config.hidden_dim, 2 * config.output_dim * config.horizon
         )
-        self.downwards_list = self.make_layers(
+        self.posterior_layers = self.make_layers(
             config.hidden_dim, config.hidden_dim, config.layers
         )
-        self.upwards_list = self.make_layers(
+        self.prior_layers = self.make_layers(
             config.hidden_dim, config.hidden_dim, config.layers
         )
         self.skip_connection = config.skip_connection
@@ -210,7 +208,7 @@ class KLBaseModel(nn.Module):
         mean2: torch.Tensor,
         logvar2: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.combine_gaussians_mode == "identity":
+        if self.combine_gaussian == False:
             return mean1, logvar1
 
         log_tau1, log_tau2 = -logvar1, -logvar2
@@ -236,12 +234,6 @@ class KLBaseModel(nn.Module):
             encoded = encoded[0]
         return self._reduce_encoder_output(encoded)
 
-    def _posterior_layers(self):
-        return getattr(self, self.posterior_layers_attr)
-
-    def _prior_layers(self):
-        return getattr(self, self.prior_layers_attr)
-
     def _should_reverse_posterior(self) -> bool:
         return self.reverse_posterior_list and getattr(self.config, "reverse", False)
 
@@ -254,7 +246,7 @@ class KLBaseModel(nn.Module):
         if y is not None:
             y_full = torch.cat([x, y], dim=1)
             posterior = self._encode_state(self.posterior_state, y_full)
-            for layer in self._posterior_layers():
+            for layer in self.posterior_layers:
                 posterior = layer(posterior)
                 mean, logvar = posterior.chunk(2, dim=-1)
                 logvar = self._clamp_logvar(logvar)
@@ -266,7 +258,7 @@ class KLBaseModel(nn.Module):
 
         prior_state = self._encode_state(self.prior_state, x)
         prior_list: list[torch.Tensor] = []
-        for i, layer in enumerate(self._prior_layers()):
+        for i, layer in enumerate(self.prior_layers):
             old_state = prior_state
             prior_state = layer(prior_state)
             prior_list.append(prior_state)
@@ -406,9 +398,9 @@ class KLBaseModel(nn.Module):
     def _parameter_groups(self):
         groups = {
             "posterior_encoder": list(self.posterior_state.parameters()),
-            "posterior_layers": list(self.upwards_list.parameters()),
+            "posterior_layers": list(self.posterior_layers.parameters()),
             "prior_encoder": list(self.prior_state.parameters()),
-            "prior_layers": list(self.downwards_list.parameters()),
+            "prior_layers": list(self.prior_layers.parameters()),
             "output": list(self.to_output.parameters()),
         }
         if self.skip_connection:
