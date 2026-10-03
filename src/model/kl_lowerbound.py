@@ -1,10 +1,9 @@
 import logging
-import numpy as np
+
 import torch
 from torch import nn
 
 from experiments.util import SeriesConfig
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -228,6 +227,9 @@ class Model(nn.Module):
 
 
 
+
+
+
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return layered_kl.new_full(
             layered_kl.shape,
@@ -237,18 +239,25 @@ class Model(nn.Module):
     def outer_train_step(self, dataloader):
 
         expected_kl = None
+        expected_wasserstein = None
 
         for x, y in dataloader:
             x = x.to(device)
             y = y.to(device)
 
             kl = self.get_layered_kl(x, y)
+            wasserstein = self.get_layered_wasserstein(x, y)
             residual = kl - self._layer_target(kl)
             if expected_kl is None:
                 expected_kl = residual
             else:
                 expected_kl += residual
+            if expected_wasserstein is None:
+                expected_wasserstein = wasserstein
+            else:
+                expected_wasserstein += wasserstein
         expected_kl /= len(dataloader)
+        expected_wasserstein /= len(dataloader)
 
 
         residual = self.kl_target - expected_kl
@@ -262,11 +271,12 @@ class Model(nn.Module):
             self.lambda_ + self.lambda_lr * residual.mean().item()
         ), 50)
         log.info(
-            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f",
+            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f",
             expected_kl.mean().item(),
             residual.mean().item(),
             self.lambda_,
             self.rho,
+            expected_wasserstein.mean().item()
         )
 
 
@@ -366,6 +376,19 @@ class Model(nn.Module):
         return to_return
 
 
+    def get_layered_wasserstein(self, x, y):
+        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        wasserstein_losses = []
+        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            wasserstein = (
+                (p_mean - q_mean).pow(2) + (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))).pow(2)
+            ).sum(dim=-1).mean()
+            wasserstein_losses.append(wasserstein.item())
+        to_return = torch.tensor(wasserstein_losses, device=x.device)
+        return to_return
 
 
 
