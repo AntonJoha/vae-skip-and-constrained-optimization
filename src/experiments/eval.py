@@ -14,7 +14,7 @@ from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
 from experiments.main import unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
-from model import Reg_Model, Upper_Model, Lower_Model, VAE_Baseline_Model
+from model import Lower_Model, Reg_Model, Upper_Model, VAE_Baseline_Model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

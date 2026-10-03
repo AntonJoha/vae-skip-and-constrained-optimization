@@ -1,6 +1,6 @@
 from .basic import Model as Basic
-from .kl_lowerbound import Model as Lower_Model
 from .kl_augmented import Model as Reg_Model
+from .kl_lowerbound import Model as Lower_Model
 from .kl_upperbound import Model as Upper_Model
 from .vae_baseline import Model as VAE_Baseline_Model
 from .vrnn import Model as VRNN
