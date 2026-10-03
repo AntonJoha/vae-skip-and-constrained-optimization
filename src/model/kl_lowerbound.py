@@ -41,6 +41,13 @@ class Model(KLBaseModel):
             float(self.kl_target),
         )
 
+    def _update_dual_variables(self, residual: torch.Tensor) -> None:
+        constrain_violation = max(0.0, abs(residual.item()))
+        if constrain_violation > self.reduction_threshold * self.old_violation:
+            self.rho *= self.rho_scaler
+        self.old_violation = constrain_violation
+        self.lambda_ = min(max(0.0, self.lambda_ + self.rho * residual.item()), 50)
+
     def outer_train_step(self, dataloader):
         expected_kl = None
         expected_wasserstein = None
@@ -78,11 +85,6 @@ class Model(KLBaseModel):
 
         expected_kl = expected_kl.sum()
         residual = self.kl_target - expected_kl
-        constrain_violation = max(0.0, residual.item())
-        if constrain_violation > self.reduction_threshold * self.old_violation:
-            self.rho *= self.rho_scaler
-        self.old_violation = constrain_violation
-        self.lambda_ = min(max(0.0, self.lambda_ + self.rho * residual.item()), 50)
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.item(),
@@ -132,5 +134,6 @@ class Model(KLBaseModel):
         loss = rec + al_penalty
         loss.backward()
         optimizer.step()
+        self._update_dual_variables(residual.detach())
 
         return float(loss.detach())
