@@ -432,7 +432,8 @@ class Model(nn.Module):
         latent_logvar_diff /= len(dataloader)
 
         residual = expected_kl - self.kl_target
-        constrain_violation = residual.pow(2)
+        constrain_violation = max(0,residual.mean())
+
 
         if constrain_violation > self.reduction_threshold*self.old_violation:
             self.rho *= self.rho_scaler
@@ -440,7 +441,7 @@ class Model(nn.Module):
         self.old_violation = constrain_violation
         self.lambda_ = min(max(
             -50,
-            self.lambda_ + self.rho*residual
+            self.lambda_ + self.rho*residual.mean()
         ), 50)
 
         log.info(

@@ -2,7 +2,7 @@
 horizon = 20
 
 main:
-	python -m experiments.main --verbose --horizon 50 --learning_rate 0.001 --hidden_dim 32 --layers 2 --beta 0.5 --batch_siz 64 --reverse 
+	python -m experiments.main --verbose --horizon 20 --batch_size 32 --hidden_dim 128 --layers 2 --learning_rate 0.0009 --lr_lambda 0.00002 --beta 0.65
 
 
 bad:
@@ -10,6 +10,7 @@ bad:
 
 upper:
 	python -m experiments.main --verbose --horizon 5 --learning_rate 0.0001 --hidden_dim 512 --layers 3 --batch_size 64 --upper --skip_connection --reverse --beta 1
+
 
 
 
@@ -53,6 +54,10 @@ basic_tune:
 	python -m experiments.main --verbose --basic --tune --horizon $(horizon)
 
 
+
+eval_augmented:
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20261001-113437.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20261001-113519.pt
 
 eval_tune:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20260924-055637.pt
