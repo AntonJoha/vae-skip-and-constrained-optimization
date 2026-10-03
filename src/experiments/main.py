@@ -118,6 +118,107 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
         break
 
 
+def _train_lower_bound_epoch(
+    model: Lower_Model, train_loader: DataLoader, optimizer: Adam
+) -> list[float]:
+    epoch_losses = []
+    for batch in train_loader:
+        x, y = unpack_batch(batch)
+
+        optimizer.zero_grad()
+        mean, logvar, prior_list, combined_posterior_list = model._latent_pass(
+            x, y, prior=False
+        )
+        _, prior_kl = model._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=prior_list,
+            combined_posterior_list=[t.detach() for t in combined_posterior_list],
+        )
+        prior_kl.backward()
+        optimizer.step()
+
+        optimizer.zero_grad()
+        mean, logvar, prior_list, combined_posterior_list = model._latent_pass(
+            x, y, prior=False
+        )
+        rec, kl = model._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=[t.detach() for t in prior_list],
+            combined_posterior_list=combined_posterior_list,
+        )
+
+        residual = model.kl_target - kl
+        shifted = model.lambda_ + model.rho * residual
+        al_penalty = (
+            torch.clamp(shifted, min=0.0) ** 2 - model.lambda_**2
+        ) / (2.0 * model.rho)
+        loss = rec + al_penalty
+        loss.backward()
+        optimizer.step()
+
+        model.last_train_metrics = {
+            "posterior_recon": float(rec.detach()),
+            "posterior_kl": float(kl.detach()),
+            "layered_kl": kl.detach(),
+        }
+        epoch_losses.append(float(loss.detach()))
+
+    return epoch_losses
+
+
+def _update_lower_bound_dual_variables(model: Lower_Model, train_loader: DataLoader) -> None:
+    expected_kl = None
+    expected_wasserstein = None
+    latent_mean_diff = None
+    latent_logvar_diff = None
+
+    for x, y in train_loader:
+        x = x.to(device)
+        y = y.to(device)
+
+        kl = model.get_layered_kl(x, y)
+        wasserstein = model.get_layered_wasserstein(x, y)
+        mean_diff, logvar_diff = model.get_mean_logvar_diff(x, y)
+        if expected_kl is None:
+            expected_kl = kl
+        else:
+            expected_kl += kl
+        if expected_wasserstein is None:
+            expected_wasserstein = wasserstein
+        else:
+            expected_wasserstein += wasserstein
+        if latent_mean_diff is None:
+            latent_mean_diff = mean_diff
+        else:
+            latent_mean_diff += mean_diff
+        if latent_logvar_diff is None:
+            latent_logvar_diff = logvar_diff
+        else:
+            latent_logvar_diff += logvar_diff
+
+    expected_kl /= len(train_loader)
+    expected_wasserstein /= len(train_loader)
+    latent_mean_diff /= len(train_loader)
+    latent_logvar_diff /= len(train_loader)
+
+    residual = model.kl_target - expected_kl.sum()
+    model._update_dual_variables(residual.detach())
+    log.info(
+        "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
+        expected_kl.mean().item(),
+        residual.mean().item(),
+        model.lambda_,
+        model.rho,
+        expected_wasserstein.mean().item(),
+        latent_mean_diff.mean().item(),
+        latent_logvar_diff.mean().item(),
+    )
+
+
 def train_model(
     runtime: SeriesConfig,
     epochs: int | None = None,
@@ -167,11 +268,15 @@ def train_model(
         epoch_losses = []
         model.set_epoch(epoch)
 
-        for batch in train_loader:
-            x, y = unpack_batch(batch)
-            epoch_losses.append(model.train_step(x, y, optimizer))
+        if isinstance(model, Lower_Model):
+            epoch_losses.extend(_train_lower_bound_epoch(model, train_loader, optimizer))
+            _update_lower_bound_dual_variables(model, train_loader)
+        else:
+            for batch in train_loader:
+                x, y = unpack_batch(batch)
+                epoch_losses.append(model.train_step(x, y, optimizer))
 
-        model.outer_train_step(train_loader)
+            model.outer_train_step(train_loader)
 
         val_loss = evaluate(model, val_loader)
         if runtime.verbose:
