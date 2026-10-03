@@ -1,251 +1,55 @@
 import logging
 
 import torch
-from torch import nn
 
 from experiments.util import SeriesConfig
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from .kl_base import KLBaseModel
 
 log = logging.getLogger(__name__)
 
 TDLGMConfig = SeriesConfig
 
 
-def _resolve_num_heads(hidden_dim: int) -> int:
-    for candidate in (8, 4, 2, 1):
-        if hidden_dim % candidate == 0 and hidden_dim // candidate >= 16:
-            return candidate
-    return 1
+class Model(KLBaseModel):
+    state_dropout = 0.0
+    layer_dropout = 0.0
+    logvar_clamp = None
+    combine_gaussian = False
+    posterior_reduce = "mean"
+    reverse_posterior_list = False
 
-
-class SequenceAttentionEncoder(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int, layers: int, seq_len: int):
-        super().__init__()
-        self.input_proj = nn.Linear(input_dim, hidden_dim)
-        self.position_embedding = nn.Parameter(torch.zeros(1, seq_len, hidden_dim))
-        self.encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=hidden_dim,
-                nhead=_resolve_num_heads(hidden_dim),
-                dim_feedforward=hidden_dim * 4,
-                dropout=0.0,
-                activation="gelu",
-                batch_first=True,
-                norm_first=True,
-            ),
-            num_layers=layers,
-            enable_nested_tensor=False,
-        )
-        self.norm = nn.LayerNorm(hidden_dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.ndim == 2:
-            x = x.unsqueeze(-1)
-        if x.size(1) > self.position_embedding.size(1):
-            raise ValueError(
-                "sequence length exceeds configured maximum: "
-                f"{x.size(1)} > {self.position_embedding.size(1)}"
-            )
-        h = self.input_proj(x) + self.position_embedding[:, : x.size(1), :]
-        h = self.encoder(h)
-        return self.norm(h)
-
-
-def _make_mlp(input_dim: int, hidden_dim: int, output_dim: int) -> nn.Sequential:
-    return nn.Sequential(
-        nn.Linear(input_dim, hidden_dim),
-        nn.ReLU(),
-        nn.Linear(hidden_dim, hidden_dim),
-        nn.ReLU(),
-        nn.Linear(hidden_dim, output_dim),
-    )
-
-
-class Model(nn.Module):
     def __init__(self, config):
-        super().__init__()
-        self.model = _make_mlp(
-            input_dim=config.hidden_dim,
-            hidden_dim=config.hidden_dim,
-            output_dim=2 * config.output_dim * config.horizon,
-        )
-
-        self.posterior_state = SequenceAttentionEncoder(
-            input_dim=config.input_dim,
-            hidden_dim=config.hidden_dim,
-            layers=2,
-            seq_len=config.seq_len + config.horizon,
-        )
-        self.prior_state = SequenceAttentionEncoder(
-            input_dim=config.input_dim,
-            hidden_dim=config.hidden_dim,
-            layers=2,
-            seq_len=config.seq_len,
-            )
-
-        self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
-
-        self.prior_state = SequenceAttentionEncoder(
-            input_dim=config.input_dim,
-            hidden_dim=config.hidden_dim,
-            layers=2,
-            seq_len=config.seq_len,
-            )
-
-        self.to_output = nn.Linear(config.hidden_dim, 2 * config.output_dim*config.horizon)
-
-        self.downwards_list = self.make_layers(config.hidden_dim, config.hidden_dim, config.layers)
-        self.upwards_list = self.make_layers(config.hidden_dim, config.hidden_dim, config.layers)
-
-        self.skip_connection = config.skip_connection
-        if self.skip_connection:
-            self.skip_weights = self.make_skips(config.layers)
-
-
-
-        self.nllLoss = nn.GaussianNLLLoss()
-        self.config = config
-
-
-        self.lambda_ = 1.0
+        super().__init__(config)
+        self.lambda_ = 0.0
         self.lambda_lr = 1e-4
+        self.kl_penalty = 1.0
         self.kl_target = 0.5
         self.rho = self.config.rho
         self.rho_scaler = float(self.config.rho_scaler)
         self.reduction_threshold = self.config.reduction_threshold
         self.old_violation = torch.inf
 
-    def make_skips(self, num_layers):
-        layers = []
-        for _ in range(num_layers):
-            layers.append(nn.Parameter(torch.tensor(1.0)))
-        return nn.ParameterList(layers)
-    
-    def make_layers(self, hidden_dim, output_dim, num_layers):
-        layers = []
-        for _ in range(num_layers):
-            layers.append(_make_mlp(hidden_dim, output_dim, 2 * output_dim))
-        return nn.ModuleList(layers)
-
-    def _to_output_shape(self, x: torch.Tensor) -> torch.Tensor:
-
-        x = x.view(x.size(0), self.config.horizon, self.config.output_dim)
-        return x.squeeze(-1) if self.config.output_dim == 1 else x
-
-    def _reparametrize(self, mean: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return mean + eps * std
-
-    def _multiply_gaussians(
-        self,
-        mean1: torch.Tensor,
-        logvar1: torch.Tensor,
-        mean2: torch.Tensor,
-        logvar2: torch.Tensor,
-    ):
-        return mean1, logvar1
-        precision1 = torch.exp(-logvar1)
-        precision2 = torch.exp(-logvar2)
-        combined_precision = precision1 + precision2
-        combined_mean = (
-            mean1 * precision1 + mean2 * precision2
-        ) / combined_precision
-        combined_logvar = -torch.log(combined_precision)
-        return combined_mean, combined_logvar
-
-    def _latent_pass(self, x, y=None, prior=True) -> torch.Tensor:
-
-
-        posterior_list = []
-        combined_posterior_list = []
-        if y is not None:
-
-
-            y_full = torch.cat([x, y], dim=1)
-            posterior = self.posterior_state(y_full)[:, -1, :]
-
-            for layer in self.downwards_list:
-                posterior = layer(posterior)
-                posterior_list.append(posterior)
-                mean, logvar = posterior.chunk(2, dim=-1)
-                posterior = self._reparametrize(mean, logvar)
-            posterior_list.reverse()
-
-        
-        prior_state = self.prior_state(x)[:, -1, :]
-        prior_list = []
-        for i, layer in enumerate(self.upwards_list):
-            old_state = prior_state
-            prior_state = layer(prior_state)
-            prior_list.append(prior_state)
-
-
-            if prior:
-                mean, logvar = prior_state.chunk(2, dim=-1)
-                prior_state = self._reparametrize(mean, logvar)
-            else:
-                posterior = posterior_list[i]
-                q_mean, q_logvar = posterior.chunk(2, dim=-1)
-                p_mean, p_logvar = prior_state.chunk(2, dim=-1)
-                mean, logvar = self._multiply_gaussians(q_mean, q_logvar, p_mean, p_logvar)
-
-                combined_posterior_list.append(torch.cat([mean, logvar], dim=-1))
-
-
-                prior_state = self._reparametrize(mean, logvar)
-
-            if self.skip_connection:
-                prior_state += self.skip_weights[i]*old_state
-
-
-
-
-        output = self.to_output(prior_state)
-        mean, logvar = output.chunk(2, dim=-1)
-        pred_mean = self._to_output_shape(mean)
-        pred_logvar = self._to_output_shape(logvar)
-
-        return pred_mean, pred_logvar, prior_list, combined_posterior_list
-
-
     def set_epoch(self, epoch: int):
         self.epoch = epoch
         self.kl_target = float(self.config.beta)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
-
-
-
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-        mean, logvar, *_ = self._latent_pass(x, y=None, prior=True)
-
-        return mean, logvar
-
-
-
-
-
-
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return layered_kl.new_full(
             layered_kl.shape,
-            float(self.kl_target) / max(1, layered_kl.numel()),
+            float(self.kl_target),
         )
 
     def outer_train_step(self, dataloader):
-
         expected_kl = None
         expected_wasserstein = None
         latent_mean_diff = None
         latent_logvar_diff = None
 
         for x, y in dataloader:
-            x = x.to(device)
-            y = y.to(device)
+            x = x.to(self.device)
+            y = y.to(self.device)
 
             kl = self.get_layered_kl(x, y)
             wasserstein = self.get_layered_wasserstein(x, y)
@@ -258,7 +62,6 @@ class Model(nn.Module):
                 expected_wasserstein = wasserstein
             else:
                 expected_wasserstein += wasserstein
-
             if latent_mean_diff is None:
                 latent_mean_diff = mean_diff
             else:
@@ -267,22 +70,19 @@ class Model(nn.Module):
                 latent_logvar_diff = logvar_diff
             else:
                 latent_logvar_diff += logvar_diff
+
         expected_kl /= len(dataloader)
         expected_wasserstein /= len(dataloader)
         latent_mean_diff /= len(dataloader)
         latent_logvar_diff /= len(dataloader)
-        
+
         expected_kl = expected_kl.sum()
         residual = self.kl_target - expected_kl
-        
         constrain_violation = max(0.0, residual.item())
-        if constrain_violation > self.reduction_threshold*self.old_violation:
+        if constrain_violation > self.reduction_threshold * self.old_violation:
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
-        self.lambda_ = min(max(
-            0.0,
-            self.lambda_ + self.rho * residual.mean().item()
-        ), 50)
+        self.lambda_ = min(max(0.0, self.lambda_ + self.rho * residual.item()), 50)
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.item(),
@@ -291,16 +91,17 @@ class Model(nn.Module):
             self.rho,
             expected_wasserstein.mean().item(),
             latent_mean_diff.mean().item(),
-            latent_logvar_diff.mean().item()
+            latent_logvar_diff.mean().item(),
         )
-
 
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
         self.train()
         optimizer.zero_grad()
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+            x, y, prior=False
+        )
         _, prior_kl = self._compute_losses(
             y,
             mean,
@@ -312,9 +113,9 @@ class Model(nn.Module):
         optimizer.step()
 
         optimizer.zero_grad()
-
-
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+            x, y, prior=False
+        )
         rec, kl = self._compute_losses(
             y,
             mean,
@@ -326,114 +127,10 @@ class Model(nn.Module):
         residual = self.kl_target - kl
         shifted = self.lambda_ + self.rho * residual
         al_penalty = (
-        torch.clamp(shifted, min=0.0) ** 2
-        - self.lambda_ ** 2
+            torch.clamp(shifted, min=0.0) ** 2 - self.lambda_**2
         ) / (2.0 * self.rho)
-
         loss = rec + al_penalty
         loss.backward()
         optimizer.step()
-        
+
         return float(loss.detach())
-
-
-    def _compute_losses(self, y, pred_mean, pred_logvar, prior_list=None, combined_posterior_list=None):
-        # Reconstruction loss
-        recon_loss = self.nllLoss(pred_mean, y.squeeze(-1), pred_logvar.exp())
-        kl_loss = 0.0
-        if prior_list is not None and combined_posterior_list is not None:
-            for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
-
-                p_mean, p_logvar = prior.chunk(2, dim=-1)
-                q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-                kl = 0.5 * (
-                    p_logvar - q_logvar
-                    + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
-                      / torch.exp(p_logvar)
-                    - 1
-                )
-
-                kl_loss += kl.sum(dim=-1).mean()
-
-        return recon_loss, kl_loss
-
-    def _layered_kl(self, prior_list, combined_posterior_list):
-        kl_losses = []
-        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-            kl = 0.5 * (
-                p_logvar - q_logvar
-                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
-                  / torch.exp(p_logvar)
-                  - 1
-            )
-            kl_losses.append(kl.sum(dim=-1).mean())
-        return torch.stack(kl_losses)
-    @torch.no_grad()
-    def get_layered_kl(self, x, y):
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
-        kl_losses = []
-        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-            kl = 0.5 * (
-                p_logvar - q_logvar
-                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2))
-                  / torch.exp(p_logvar)
-                - 1
-            )
-            kl_losses.append(kl.sum(dim=-1).mean().item())
-        to_return = torch.tensor(kl_losses, device=x.device)
-        return to_return
-
-
-    def get_layered_wasserstein(self, x, y):
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
-        wasserstein_losses = []
-        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-            wasserstein = (
-                (p_mean - q_mean).pow(2) + (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))).pow(2)
-            ).sum(dim=-1).mean()
-            wasserstein_losses.append(wasserstein.item())
-        to_return = torch.tensor(wasserstein_losses, device=x.device)
-        return to_return
-
-    def get_mean_logvar_diff(self, x, y):
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
-        mean_diffs = []
-        logvar_diffs = []
-        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-
-            mean_diff = (p_mean - q_mean).pow(2).sum(dim=-1).mean()
-            logvar_diff = (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))).pow(2).sum(dim=-1).mean()
-
-            mean_diffs.append(mean_diff.item())
-            logvar_diffs.append(logvar_diff.item())
-        return torch.tensor(mean_diffs, device=x.device), torch.tensor(logvar_diffs, device=x.device)
-
-
-    @torch.no_grad()
-    def compute_losses(self, x: torch.Tensor, y: torch.Tensor, prior: bool = True):
-        (
-            pred_mean,
-            pred_logvar,
-            prior_list,
-            combined_posterior_list,
-        ) = self._latent_pass(x, y, prior=prior)
-        rec, kl = self._compute_losses(
-            y,
-            pred_mean,
-            pred_logvar,
-            prior_list=prior_list,
-            combined_posterior_list=combined_posterior_list
-        )
-        return float(rec), float(kl)
