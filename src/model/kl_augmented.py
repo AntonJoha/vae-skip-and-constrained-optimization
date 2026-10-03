@@ -32,6 +32,9 @@ class Model(KLBaseModel):
             self.kl_target = float(self.config.beta) / ((self.epoch + 1) ** 0.5)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
+    def inner_train_step(self, dataloader, optimizer):
+        return
+
     def outer_train_step(self, dataloader):
         expected_kl = None
         expected_wasserstein = None

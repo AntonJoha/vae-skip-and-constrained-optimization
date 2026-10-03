@@ -36,6 +36,12 @@ class Model(KLBaseModel):
         self.kl_target = float(self.config.beta)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
+
+    def inner_train_step(self, dataloader, optimizer):
+        return
+
+
+
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return layered_kl.new_full(
             layered_kl.shape,

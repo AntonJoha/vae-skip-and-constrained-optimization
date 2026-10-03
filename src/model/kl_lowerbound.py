@@ -94,24 +94,34 @@ class Model(KLBaseModel):
             latent_logvar_diff.mean().item(),
         )
 
+    def inner_train_step(self, dataloader, optimizer):
+        self.train()
+
+        for x, y in dataloader:
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+
+            optimizer.zero_grad()
+            mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+                x, y, prior=False
+            )
+            _, prior_kl = self._compute_losses(
+                y,
+                mean,
+                logvar,
+                prior_list=prior_list,
+                combined_posterior_list=[t.detach() for t in combined_posterior_list],
+            )
+            prior_kl.backward()
+            optimizer.step()
+
+
+
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
     ) -> float:
         self.train()
-        optimizer.zero_grad()
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
-        )
-        _, prior_kl = self._compute_losses(
-            y,
-            mean,
-            logvar,
-            prior_list=prior_list,
-            combined_posterior_list=[t.detach() for t in combined_posterior_list],
-        )
-        prior_kl.backward()
-        optimizer.step()
-
         optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False

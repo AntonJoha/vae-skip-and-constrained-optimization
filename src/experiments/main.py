@@ -167,6 +167,8 @@ def train_model(
         epoch_losses = []
         model.set_epoch(epoch)
 
+        model.inner_train_step(train_loader, optimizer)
+
         for batch in train_loader:
             x, y = unpack_batch(batch)
             epoch_losses.append(model.train_step(x, y, optimizer))
