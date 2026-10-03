@@ -240,6 +240,8 @@ class Model(nn.Module):
 
         expected_kl = None
         expected_wasserstein = None
+        latent_mean_diff = None
+        latent_logvar_diff = None
 
         for x, y in dataloader:
             x = x.to(device)
@@ -248,6 +250,7 @@ class Model(nn.Module):
             kl = self.get_layered_kl(x, y)
             wasserstein = self.get_layered_wasserstein(x, y)
             residual = kl - self._layer_target(kl)
+            mean_diff, logvar_diff = self.get_mean_logvar_diff(x, y)
             if expected_kl is None:
                 expected_kl = residual
             else:
@@ -256,9 +259,19 @@ class Model(nn.Module):
                 expected_wasserstein = wasserstein
             else:
                 expected_wasserstein += wasserstein
+
+            if latent_mean_diff is None:
+                latent_mean_diff = mean_diff
+            else:
+                latent_mean_diff += mean_diff
+            if latent_logvar_diff is None:
+                latent_logvar_diff = logvar_diff
+            else:
+                latent_logvar_diff += logvar_diff
         expected_kl /= len(dataloader)
         expected_wasserstein /= len(dataloader)
-
+        latent_mean_diff /= len(dataloader)
+        latent_logvar_diff /= len(dataloader)
 
         residual = self.kl_target - expected_kl
         
@@ -271,12 +284,14 @@ class Model(nn.Module):
             self.lambda_ + self.lambda_lr * residual.mean().item()
         ), 50)
         log.info(
-            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f",
+            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
             residual.mean().item(),
             self.lambda_,
             self.rho,
-            expected_wasserstein.mean().item()
+            expected_wasserstein.mean().item(),
+            latent_mean_diff.mean().item(),
+            latent_logvar_diff.mean().item()
         )
 
 
@@ -390,6 +405,20 @@ class Model(nn.Module):
         to_return = torch.tensor(wasserstein_losses, device=x.device)
         return to_return
 
+    def get_mean_logvar_diff(self, x, y):
+        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        mean_diffs = []
+        logvar_diffs = []
+        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            mean_diff = (p_mean - q_mean).pow(2).sum(dim=-1).mean()
+            logvar_diff = (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))).pow(2).sum(dim=-1).mean()
+
+            mean_diffs.append(mean_diff.item())
+            logvar_diffs.append(logvar_diff.item())
+        return torch.tensor(mean_diffs, device=x.device), torch.tensor(logvar_diffs, device=x.device)
 
 
     @torch.no_grad()
