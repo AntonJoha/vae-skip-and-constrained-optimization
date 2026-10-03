@@ -120,9 +120,7 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses_position = []
     fde_losses = []
     ade_losses = []
-
-
-
+    kl_losses = []
 
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
@@ -147,6 +145,13 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         losses.append(float(model.loss(mean, y.squeeze(-1), logvar.exp())))
         losses_position.append(nll_position(mean, y.squeeze(-1), logvar))
 
+        if hasattr(model, "get_layered_kl"):
+            batch_kl = model.get_layered_kl(x, y)
+            if torch.is_tensor(batch_kl):
+                kl_losses.append(float(batch_kl.detach().sum().item()))
+            else:
+                kl_losses.append(float(batch_kl))
+
         mse_losses.append(float(mse_loss(mean, y.squeeze(-1)).mean()))
         mse_losses_position.append(mse_position(mean, y.squeeze(-1)))
 
@@ -154,8 +159,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-
-
 
         xs.append(x)
         means.append(mean)
@@ -173,6 +176,8 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         "y_scaled": ys_scaled,
         "losses": losses,
         "losses_position": losses_position,
+        "kl_losses": kl_losses,
+        "kl_loss": sum(kl_losses) / max(1, len(kl_losses)) if kl_losses else None,
         "loss": sum(losses) / max(1, len(losses)),
         "loss_position": sum(losses_position) / max(1, len(losses_position)),
         "mse_loss": sum(mse_losses) / max(1, len(mse_losses)),
@@ -205,6 +210,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses_position = []
     fde_losses = []
     ade_losses = []
+    kl_losses = []
     wasserstein2_losses = []
     wasserstein2_similarity_losses = []
 
@@ -263,6 +269,11 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         losses.append(float(model.nllLoss(mean, y.squeeze(-1), logvar.exp())))
         losses_position.append(nll_position(mean, y.squeeze(-1), logvar))
 
+        if hasattr(model, "get_layered_kl"):
+            batch_kl = model.get_layered_kl(x, y)
+            batch_kl_total = batch_kl.sum().item() if batch_kl.ndim else float(batch_kl)
+            kl_losses.append(batch_kl_total)
+
         mse_losses.append(float(mse_loss(mean, y.squeeze(-1)).mean()))
         mse_losses_position.append(mse_position(mean, y.squeeze(-1)))
 
@@ -301,6 +312,8 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         "y_scaled": ys_scaled,
         "losses": losses,
         "losses_position": losses_position,
+        "kl_losses": kl_losses,
+        "kl_loss": sum(kl_losses) / max(1, len(kl_losses)) if kl_losses else None,
         "loss": sum(losses) / max(1, len(losses)),
         "loss_position": sum(losses_position) / max(1, len(losses_position)),
         "mse_loss": sum(mse_losses) / max(1, len(mse_losses)),
