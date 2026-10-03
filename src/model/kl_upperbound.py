@@ -5,6 +5,7 @@ from torch import nn
 
 from experiments.util import SeriesConfig
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
 
 TDLGMConfig = SeriesConfig
@@ -114,6 +115,13 @@ class Model(nn.Module):
         self.kl_penalty = 1.0
         self.kl_target = float(self.config.beta)
         self.epoch = 1
+        
+        self.rho = self.config.rho
+
+        self.rho_scaler = float(self.config.rho_scaler)
+        self.old_violation = torch.inf
+
+        self.reduction_threshold = self.config.reduction_threshold
 
     def make_skips(self, num_layers):
         layers = []
@@ -291,7 +299,7 @@ class Model(nn.Module):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
         self.kl_target = float(self.config.beta)
-        self.kl_target = float(self.config.beta)/((self.epoch+1)**1)
+        #self.kl_target = float(self.config.beta)/((self.epoch+1)**1)
 
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
@@ -387,6 +395,37 @@ class Model(nn.Module):
     def get_layered_kl(self, x, y):
         _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
         return self._layered_kl(prior_list, combined_posterior_list).detach()
+
+
+    def get_layered_wasserstein(self, x, y):
+        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        wasserstein_losses = []
+        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            wasserstein = (
+                (p_mean - q_mean).pow(2) + (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))).pow(2)
+            ).sum(dim=-1).mean()
+            wasserstein_losses.append(wasserstein.item())
+        to_return = torch.tensor(wasserstein_losses, device=x.device)
+        return to_return
+
+    def get_mean_logvar_diff(self, x, y):
+        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+        mean_diffs = []
+        logvar_diffs = []
+        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            mean_diff = (p_mean - q_mean).pow(2).sum(dim=-1).mean()
+            logvar_diff = (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))).pow(2).sum(dim=-1).mean()
+
+            mean_diffs.append(mean_diff.item())
+            logvar_diffs.append(logvar_diff.item())
+        return torch.tensor(mean_diffs, device=x.device), torch.tensor(logvar_diffs, device=x.device)
+
 
 
     @torch.no_grad()
