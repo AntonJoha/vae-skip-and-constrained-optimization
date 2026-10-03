@@ -407,12 +407,11 @@ class Model(nn.Module):
 
             kl = self.get_layered_kl(x, y)
             wasserstein = self.get_layered_wasserstein(x, y)
-            residual = kl - self._layer_target(kl)
             mean_diff, logvar_diff = self.get_mean_logvar_diff(x, y)
             if expected_kl is None:
-                expected_kl = residual
+                expected_kl = kl
             else:
-                expected_kl += residual
+                expected_kl += kl
             if expected_wasserstein is None:
                 expected_wasserstein = wasserstein
             else:
@@ -431,8 +430,9 @@ class Model(nn.Module):
         latent_mean_diff /= len(dataloader)
         latent_logvar_diff /= len(dataloader)
 
-        residual = expected_kl - self.kl_target
-        constrain_violation = max(0,residual.mean())
+        expected_total_kl = expected_kl.sum()
+        residual = expected_total_kl - self.kl_target
+        constrain_violation = abs(residual.item())
 
 
         if constrain_violation > self.reduction_threshold*self.old_violation:
@@ -441,7 +441,7 @@ class Model(nn.Module):
         self.old_violation = constrain_violation
         self.lambda_ = min(max(
             -50,
-            self.lambda_ + self.rho*residual.mean()
+            self.lambda_ + self.rho*residual.item()
         ), 50)
 
         log.info(
