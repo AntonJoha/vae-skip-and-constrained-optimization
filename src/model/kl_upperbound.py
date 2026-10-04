@@ -28,8 +28,9 @@ class Model(KLBaseModel):
         self.epoch = 1
         self.rho = self.config.rho
         self.rho_scaler = float(self.config.rho_scaler)
-        self.old_violation = torch.inf
         self.reduction_threshold = self.config.reduction_threshold
+        self.lambda_ = torch.zeros(config.layers)
+        self.old_violation = torch.full((config.layers,), torch.inf)
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -77,18 +78,22 @@ class Model(KLBaseModel):
         latent_mean_diff /= len(dataloader)
         latent_logvar_diff /= len(dataloader)
 
-        expected_kl = expected_kl.sum()
-        residual = expected_kl - self.kl_target
-        constrain_violation = abs(residual.item())
-        if constrain_violation > self.reduction_threshold * self.old_violation:
+        residual = expected_kl - self._layer_target(expected_kl)
+        constrain_violation = residual.abs()
+        if torch.any(
+            constrain_violation
+            > self.reduction_threshold * self.old_violation.to(constrain_violation.device)
+        ).item():
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
-        self.lambda_ = min(max(-50, self.lambda_ + self.rho * residual.item()), 50)
+        self.lambda_ = torch.clamp(
+            self.lambda_.to(residual.device) + self.rho * residual, -50, 50
+        )
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
-            expected_kl.item(),
+            expected_kl.mean().item(),
             residual.mean().item(),
-            self.lambda_,
+            self.lambda_.mean().item(),
             self.rho,
             expected_wasserstein.mean().item(),
             latent_mean_diff.mean().item(),
@@ -104,7 +109,7 @@ class Model(KLBaseModel):
             x, y, prior=False
         )
 
-        rec, kl = self._compute_losses(
+        rec, _ = self._compute_losses(
             y,
             mean,
             logvar,
@@ -112,21 +117,27 @@ class Model(KLBaseModel):
             combined_posterior_list=combined_posterior_list,
         )
 
-        residual = kl - self.kl_target
-        loss = rec + self.lambda_ * residual + 0.5 * self.rho * residual.pow(2)
+        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        residual = layered_kl - self._layer_target(layered_kl)
+        kl_constraint = (
+            self.lambda_.to(residual.device) * residual
+            + 0.5 * self.rho * residual.pow(2)
+        ).sum()
+        loss = rec + kl_constraint
         loss.backward()
         optimizer.step()
 
         with torch.no_grad():
-            self.lambda_ = min(
-                max(0.0, self.lambda_ + self.rho * residual.detach().item()),
-                50,
+            self.lambda_ = torch.clamp(
+                self.lambda_.to(residual.device) + self.rho * residual.detach(),
+                min=0.0,
+                max=50,
             )
 
         self.last_train_metrics = {
             "posterior_recon": float(rec.detach()),
-            "posterior_kl": float(kl.detach()),
-            "layered_kl": kl.detach(),
+            "posterior_kl": float(layered_kl.detach().sum()),
+            "layered_kl": layered_kl.detach(),
         }
 
         return float(loss.detach())
