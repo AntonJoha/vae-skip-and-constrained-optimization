@@ -311,7 +311,9 @@ class KLBaseModel(nn.Module):
         return kl_loss
 
     def _layered_kl(
-        self, prior_list: list[torch.Tensor], combined_posterior_list: list[torch.Tensor]
+        self,
+        prior_list: list[torch.Tensor],
+        combined_posterior_list: list[torch.Tensor],
     ) -> torch.Tensor:
         kl_losses = []
         for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
@@ -369,9 +371,16 @@ class KLBaseModel(nn.Module):
             p_mean, p_logvar = prior.chunk(2, dim=-1)
             q_mean, q_logvar = posterior.chunk(2, dim=-1)
             wasserstein = (
-                (p_mean - q_mean).pow(2)
-                + (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))).pow(2)
-            ).sum(dim=-1).mean()
+                (
+                    (p_mean - q_mean).pow(2)
+                    + (
+                        torch.sqrt(torch.exp(p_logvar))
+                        - torch.sqrt(torch.exp(q_logvar))
+                    ).pow(2)
+                )
+                .sum(dim=-1)
+                .mean()
+            )
             wasserstein_losses.append(wasserstein.item())
         return torch.tensor(wasserstein_losses, device=x.device)
 
@@ -387,8 +396,11 @@ class KLBaseModel(nn.Module):
             q_mean, q_logvar = posterior.chunk(2, dim=-1)
             mean_diff = (p_mean - q_mean).pow(2).sum(dim=-1).mean()
             logvar_diff = (
-                torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar))
-            ).pow(2).sum(dim=-1).mean()
+                (torch.sqrt(torch.exp(p_logvar)) - torch.sqrt(torch.exp(q_logvar)))
+                .pow(2)
+                .sum(dim=-1)
+                .mean()
+            )
             mean_diffs.append(mean_diff.item())
             logvar_diffs.append(logvar_diff.item())
         return torch.tensor(mean_diffs, device=x.device), torch.tensor(
@@ -426,10 +438,16 @@ class KLBaseModel(nn.Module):
         return squared_norm.sqrt().item()
 
     def inner_parameters(self):
-        return list(self.posterior_state.parameters()) + list(self.posterior_layers.parameters())
-    
+        return list(self.posterior_state.parameters()) + list(
+            self.posterior_layers.parameters()
+        )
+
     def middle_parameters(self):
-        return list(self.prior_state.parameters()) + list(self.prior_layers.parameters()) + list(self.to_output.parameters())
+        return (
+            list(self.prior_state.parameters())
+            + list(self.prior_layers.parameters())
+            + list(self.to_output.parameters())
+        )
 
     def _gradient_diagnostics(self, losses):
         groups = self._parameter_groups()

@@ -19,6 +19,7 @@ class Model(KLBaseModel):
     combine_gaussian = False
     posterior_reduce = "mean"
     reverse_posterior_list = False
+
     def __init__(self, config):
         super().__init__(config)
         self.lambda_ = 0.0
@@ -31,7 +32,6 @@ class Model(KLBaseModel):
         self.reduction_threshold = self.config.reduction_threshold
         self.lambda_ = torch.zeros(config.layers)
         self.old_violation = torch.full((config.layers,), torch.inf)
-
 
         self.lambda_min = torch.zeros(config.layers) - config.lambda_min
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
@@ -89,12 +89,15 @@ class Model(KLBaseModel):
         constrain_violation = residual.abs()
         if torch.any(
             constrain_violation
-            > self.reduction_threshold * self.old_violation.to(constrain_violation.device)
+            > self.reduction_threshold
+            * self.old_violation.to(constrain_violation.device)
         ).item():
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual, self.lambda_min, self.lambda_max
+            self.lambda_.to(residual.device) + self.rho * residual,
+            self.lambda_min,
+            self.lambda_max,
         )
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
@@ -108,7 +111,7 @@ class Model(KLBaseModel):
         )
 
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
+        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer, _inner=None
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)

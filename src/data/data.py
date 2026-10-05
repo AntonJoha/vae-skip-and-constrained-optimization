@@ -1,5 +1,6 @@
 import csv
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from distutils.util import strtobool
 from pathlib import Path
@@ -168,7 +169,6 @@ def convert_tsf_to_dataframe(
         )
 
 
-
 class StandardizedPedDataset(Dataset):
     def __init__(self, series, context_length, horizon, mean, std):
         self.series = torch.tensor(series, dtype=torch.float32)
@@ -185,7 +185,9 @@ class StandardizedPedDataset(Dataset):
     def __getitem__(self, idx):
         x = (self.series[idx : idx + self.context_length] - self.mean) / self.std
         y = (
-            self.series[idx + self.context_length : idx + self.context_length + self.horizon]
+            self.series[
+                idx + self.context_length : idx + self.context_length + self.horizon
+            ]
             - self.mean
         ) / self.std
 
@@ -194,8 +196,6 @@ class StandardizedPedDataset(Dataset):
 
 # Backward-compatible alias for older imports.
 MaxMinDataset = StandardizedPedDataset
-
-
 
 
 class TimeSeriesDataset(Dataset):
@@ -342,7 +342,6 @@ def get_tsf_dataset(
     ## normalize data
     all_values = []
 
-
     for row in df["series_value"]:
         all_values.extend(row)
     all_values = np.array(all_values)
@@ -459,9 +458,8 @@ def get_shampoo_dataloaders(
     return train_loader, val_loader, test_loader
 
 
-
 def _ped_get_mean_std(train):
-    
+
     arr = []
 
     for files in [list(train.glob("*.txt"))]:
@@ -477,8 +475,6 @@ def _ped_get_mean_std(train):
 
     return mean, std
 
-from collections import defaultdict
-
 
 def _ped_get_folder(
     ped_folder,
@@ -492,19 +488,15 @@ def _ped_get_folder(
     datasets = []
 
     for file in files:
-
         trajectories = defaultdict(list)
 
         with open(file) as f:
             for line in f:
                 frame, ped_id, x, y = map(float, line.split())
 
-                trajectories[int(ped_id)].append(
-                    (frame, x, y)
-                )
+                trajectories[int(ped_id)].append((frame, x, y))
 
-        for ped_id, traj in trajectories.items():
-
+        for _ped_id, traj in trajectories.items():
             traj.sort(key=lambda t: t[0])
 
             coords = np.array(
@@ -525,6 +517,7 @@ def _ped_get_folder(
 
     return ConcatDataset(datasets)
 
+
 def get_ped_dataset(
     ped_file_path,
     context_length,
@@ -532,7 +525,8 @@ def get_ped_dataset(
     batch_size=32,
     train_fraction=0.8,
     reduced_dataset=None,
-    seed: int = 42):
+    seed: int = 42,
+):
 
     ped_file_path = ped_file_path.with_suffix("")
 
@@ -566,11 +560,10 @@ def get_ped_dataset(
             [test_size, len(test_dataset) - test_size],
             generator=generator,
         )
-    
+
     test = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     train = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
 
     return train, val, test
 
@@ -649,9 +642,9 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
     return train_df, val_df, test_df
 
 
-
 def ped_rescale(series, mean, std):
     return (series - mean) / std
+
 
 def ped_get_min_max(path):
     return ped_get_mean_std(path)
@@ -670,7 +663,7 @@ def get_scale_constant(runtime):
     """
     Returns lambda that redo the normalization of the data. This is used to scale the output of the model back to the original scale.
     """
-    
+
     dataset_path = Path(get_dataset_names()[0])
     print(f"Loading dataset from {dataset_path}")
 
@@ -683,7 +676,7 @@ def get_scale_constant(runtime):
         return lambda x: x.cpu() * std + mean, lambda x: x.cpu() + 2 * torch.log(std)
 
     else:
-        #TODO : Implement scaling for other dataset types
+        # TODO : Implement scaling for other dataset types
         df = pd.read_csv(dataset_path)
 
         if dataset_path.name == "cleaned_weather.csv":
@@ -716,24 +709,21 @@ def get_scale_constant(runtime):
         std = torch.tensor(scaler.scale_, dtype=torch.float32)
 
         return (
-            lambda x: x.cpu() * std + mean,                    # mean
-            lambda x: x.cpu() + 2 * torch.log(std),            # log-variance
+            lambda x: x.cpu() * std + mean,  # mean
+            lambda x: x.cpu() + 2 * torch.log(std),  # log-variance
         )
+
 
 def get_dataset_names():
     return [
-
         "data/AirQualityUCI.csv",
         "data/solar_4_seconds_dataset.tsf",
         "data/covid_deaths_dataset.tsf",
-
         "data/cleaned_weather.csv",
         "data/solar_10_minutes_dataset.tsf",
         "data/eth.ped",
-
         "data/cleaned_weather.csv",
         "data/pedestrian_counts_dataset.tsf",
-
         "data/m1_monthly_dataset.tsf",
         "data/traffic_weekly_dataset.tsf",
     ]

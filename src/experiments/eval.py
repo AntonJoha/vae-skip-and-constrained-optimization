@@ -71,8 +71,9 @@ def fde_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         mean = mean.unsqueeze(-1)
     if y.ndim == 2:
         y = y.unsqueeze(-1)
-    loss = torch.linalg.vector_norm(mean[:,-1,:] - y[:,-1,:], dim=-1).mean()
+    loss = torch.linalg.vector_norm(mean[:, -1, :] - y[:, -1, :], dim=-1).mean()
     return loss
+
 
 def ade_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     if mean.ndim == 2:
@@ -101,8 +102,7 @@ def wasserstein2_distance(prior: torch.Tensor, posterior: torch.Tensor) -> torch
     posterior_std = torch.exp(0.5 * posterior_logvar)
 
     squared_distance = (
-        (prior_mean - posterior_mean).pow(2)
-        + (prior_std - posterior_std).pow(2)
+        (prior_mean - posterior_mean).pow(2) + (prior_std - posterior_std).pow(2)
     ).sum(dim=-1)
     return torch.sqrt(squared_distance).mean()
 
@@ -121,9 +121,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
     fde_losses = []
     ade_losses = []
 
-
-
-
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
     xs_scaled = []
@@ -133,7 +130,7 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         x = x.to(device)
         y = y.to(device)
         mean, logvar = model(x)
-        
+
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
         logvar_scaled = scaler[1](logvar)
@@ -154,8 +151,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-
-
 
         xs.append(x)
         means.append(mean)
@@ -181,11 +176,13 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
         "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
+        "ade_loss_position": sum(ade_losses_position)
+        / max(1, len(ade_losses_position)),
         "ade_losses": ade_losses,
         "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
         "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
+        "fde_loss_position": sum(fde_losses_position)
+        / max(1, len(fde_losses_position)),
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
     }
@@ -207,9 +204,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
     ade_losses = []
     wasserstein2_losses = []
     wasserstein2_similarity_losses = []
-
-
-
 
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
@@ -243,9 +237,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         )
         wasserstein2_distance_score = sum(
             wasserstein2_distance(prior_layer, posterior_layer)
-            for prior_layer, posterior_layer in zip(
-                prior_list, post_list, strict=False
-            )
+            for prior_layer, posterior_layer in zip(prior_list, post_list, strict=False)
         ) / max(1, len(prior_list))
         wasserstein2_losses.append(wasserstein2_distance_score)
         wasserstein2_similarity_losses.append(1.0 / (1.0 + wasserstein2_distance_score))
@@ -270,8 +262,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-
-
 
         xs.append(x)
         means.append(mean)
@@ -309,11 +299,13 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler) -> float:
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
         "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)        / max(1, len(ade_losses_position)),
+        "ade_loss_position": sum(ade_losses_position)
+        / max(1, len(ade_losses_position)),
         "ade_losses": ade_losses,
         "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
         "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)        / max(1, len(fde_losses_position)),
+        "fde_loss_position": sum(fde_losses_position)
+        / max(1, len(fde_losses_position)),
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
     }

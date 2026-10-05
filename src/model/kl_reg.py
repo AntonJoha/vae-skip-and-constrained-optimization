@@ -28,9 +28,7 @@ class Model(KLBaseModel):
         self.kl_target = 1 / (self.epoch**self.config.beta) if self.epoch > 0 else 1.0
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
-    def train_step(
-        self, x, y, optimizer
-    ) -> float:
+    def train_step(self, x, y, optimizer) -> float:
         self.train()
         optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(

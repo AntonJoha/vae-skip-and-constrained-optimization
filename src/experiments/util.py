@@ -145,12 +145,14 @@ def save_config(
 def checkpoint_filename(suffix: str) -> str:
     return f"checkpoint_epoch{suffix}"
 
+
 def should_stop_training(initial_loss: float, current_loss: float) -> str | None:
     if not math.isfinite(current_loss):
         return "loss became non-finite"
     if current_loss >= 20 * initial_loss:
         return "loss exceeded 20x the initial loss"
     return None
+
 
 def load_checkpoint(
     checkpoint_path: Path,

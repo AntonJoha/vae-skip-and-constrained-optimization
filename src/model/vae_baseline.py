@@ -11,7 +11,9 @@ class Model(RegModel):
     def __init__(self, config):
         super().__init__(config)
         self.beta = float(self.config.beta)
-        total_epochs = self.config.tuning_epochs if self.config.tune else self.config.epochs
+        total_epochs = (
+            self.config.tuning_epochs if self.config.tune else self.config.epochs
+        )
         self.kl_warmup_epochs = max(1, int(total_epochs * 0.3))
         self.kl_weight = 0.0
 
