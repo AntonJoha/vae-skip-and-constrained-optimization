@@ -86,13 +86,13 @@ class Model(KLBaseModel):
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual, min=0.0, max=50
+            self.lambda_.to(residual.device) + self.rho * residual, min=0.1, max=50
         )
         log.info(
-            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
+            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
             residual.mean().item(),
-            self.lambda_.mean().item(),
+            self.lambda_.cpu().numpy().tolist(),
             self.rho,
             expected_wasserstein.mean().item(),
             latent_mean_diff.mean().item(),
