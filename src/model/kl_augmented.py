@@ -23,6 +23,14 @@ class Model(KLBaseModel):
         super().__init__(config)
         self.last_train_metrics = None
         self.kl_target = float(self.config.beta)
+        self.lambda_ = torch.zeros(config.layers)
+        self.old_violation = torch.full((config.layers,), torch.inf)
+
+    def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        return layered_kl.new_full(
+            layered_kl.shape,
+            float(self.kl_target) / max(1, layered_kl.numel()),
+        )
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -67,21 +75,25 @@ class Model(KLBaseModel):
         latent_mean_diff /= len(dataloader)
         latent_logvar_diff /= len(dataloader)
 
-        expected_total_kl = expected_kl.sum()
-        residual = expected_total_kl - self.kl_target
-        constrain_violation = abs(residual.item())
+        residual = expected_kl - self._layer_target(expected_kl)
+        constrain_violation = residual.abs()
 
-        if constrain_violation > self.reduction_threshold * self.old_violation:
+        if torch.any(
+            constrain_violation
+            > self.reduction_threshold * self.old_violation.to(constrain_violation.device)
+        ).item():
             self.rho *= self.rho_scaler
 
         self.old_violation = constrain_violation
-        self.lambda_ = min(max(-50, self.lambda_ + self.rho * residual.item()), 50)
+        self.lambda_ = torch.clamp(
+            self.lambda_.to(residual.device) + self.rho * residual, -50, 50
+        )
 
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%.4f, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
             residual.mean().item(),
-            self.lambda_,
+            self.lambda_.mean().item(),
             self.rho,
             expected_wasserstein.mean().item(),
             latent_mean_diff.mean().item(),
@@ -106,10 +118,12 @@ class Model(KLBaseModel):
         )
 
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        total_kl = layered_kl.sum()
-        residual = total_kl - self.kl_target
+        residual = layered_kl - self._layer_target(layered_kl)
 
-        kl_constraint = self.lambda_ * residual + 0.5 * self.rho * residual.pow(2)
+        kl_constraint = (
+            self.lambda_.to(residual.device) * residual
+            + 0.5 * self.rho * residual.pow(2)
+        ).sum()
         loss = rec + kl_constraint
 
         if self.config.grad_diagnostics:
