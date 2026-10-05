@@ -321,10 +321,9 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 "beta",
                 1e-2,
                 1),
-            lambda_min=trial.suggest_float(
+            lambda_min=trial.suggest_categorical()(
                 "lambda_min",
-                0.0,
-                10.0,
+                [.5, 1, 5]
             ),
             skip_connection=trial.suggest_categorical("skip_connection", [True, False])
         )
