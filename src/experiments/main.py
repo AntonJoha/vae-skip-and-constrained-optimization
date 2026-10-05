@@ -100,14 +100,25 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
         model = Reg_Model(runtime).to(device)
 
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
-    optimizer = Adam(model.parameters(), lr=runtime.learning_rate)
+    
+    inner_param = model.inner_parameters()
+    inner_optimizer = None
+    if inner_param is not None:
+        inner_optimizer = Adam(model.inner_parameters(), lr=runtime.learning_rate)
+
+    middle_param = model.middle_parameters()
+    middle_optimizer = None
+    if middle_param is not None:
+        middle_optimizer = Adam(model.middle_parameters(), lr=runtime.learning_rate)
+
+
     if runtime.verbose:
         log.info(
             "Parameters: %s",
             sum(p.numel() for p in model.parameters() if p.requires_grad),
         )
     model.compile()
-    return model, optimizer
+    return model, inner_optimizer, middle_optimizer
 
 
 def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
@@ -131,14 +142,26 @@ def train_model(
 
     _set_input_output_dim(runtime, train_loader)
 
-    model, optimizer = build_runtime_model(runtime)
+    model, inner_optimizer, middle_optimizer = build_runtime_model(runtime)
+    
+    scheduler_inner = None
+    if inner_optimizer is not None:
+        scheduler_inner = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            inner_optimizer,
+            mode='min',
+            factor=0.2,
+            patience=10,
+        )
+    
+    scheduler_middle = None
+    if middle_optimizer is not None:
+        scheduler_middle = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            middle_optimizer,
+            mode='min',
+            factor=0.1,
+            patience=10,
+        )
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode='min',
-        factor=0.1,
-        patience=5,
-    )
     train_epochs = runtime.epochs if epochs is None else epochs
     checkpoint_interval = max(1, runtime.checkpoint_interval)
     early_stopping_patience = 20
@@ -169,7 +192,7 @@ def train_model(
 
         for batch in train_loader:
             x, y = unpack_batch(batch)
-            epoch_losses.append(model.train_step(x, y, optimizer))
+            epoch_losses.append(model.train_step(x, y, middle_optimizer, inner_optimizer))
 
         model.outer_train_step(train_loader)
 
@@ -193,7 +216,11 @@ def train_model(
             )
             log.info(" Prior NLL on train: %.5f", prior)
             log.info(" Layered KL: %s", layered_kl)
-        scheduler.step(val_loss)
+        
+        if scheduler_middle is not None:
+            scheduler_middle.step(val_loss)
+        if scheduler_inner is not None:
+            scheduler_inner.step(val_loss)
 
         if reason := should_stop_training(before, val_loss):
             log.warning(

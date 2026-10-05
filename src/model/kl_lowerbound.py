@@ -104,10 +104,11 @@ class Model(KLBaseModel):
         )
 
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
+        self, x: torch.Tensor, y: torch.Tensor, inner_optimizer, middle_optimizer: torch.optim.Optimizer
     ) -> float:
         self.train()
-        optimizer.zero_grad()
+        inner_optimizer.zero_grad()
+
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
         )
@@ -119,9 +120,9 @@ class Model(KLBaseModel):
             combined_posterior_list=[t.detach() for t in combined_posterior_list],
         )
         prior_kl.backward()
-        optimizer.step()
-
-        optimizer.zero_grad()
+        inner_optimizer.step()
+    
+        middle_optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
         )
@@ -142,6 +143,6 @@ class Model(KLBaseModel):
         ) / (2.0 * self.rho)
         loss = rec + al_penalty.sum()
         loss.backward()
-        optimizer.step()
+        middle_optimizer.step()
 
         return float(loss.detach())

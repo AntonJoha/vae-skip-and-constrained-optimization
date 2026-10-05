@@ -106,7 +106,7 @@ class Model(KLBaseModel):
         )
 
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
+        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer, inner_optimizer=None
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)
@@ -167,3 +167,12 @@ class Model(KLBaseModel):
         }
 
         return float(loss.detach())
+
+
+    def inner_parameters(self):
+        return None
+    
+    def middle_parameters(self):
+        return list(self.prior_state.parameters()) + list(self.prior_layers.parameters()) + list(self.to_output.parameters()) + list(self.posterior_state.parameters()) + list(self.posterior_layers.parameters())
+
+

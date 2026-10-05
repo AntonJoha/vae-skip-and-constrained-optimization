@@ -425,6 +425,12 @@ class KLBaseModel(nn.Module):
             return 0.0
         return squared_norm.sqrt().item()
 
+    def inner_parameters(self):
+        return list(self.posterior_state.parameters()) + list(self.posterior_layers.parameters())
+    
+    def middle_parameters(self):
+        return list(self.prior_state.parameters()) + list(self.prior_layers.parameters()) + list(self.to_output.parameters())
+
     def _gradient_diagnostics(self, losses):
         groups = self._parameter_groups()
         result = {}
