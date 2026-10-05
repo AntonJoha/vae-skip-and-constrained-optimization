@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 
 TDLGMConfig = SeriesConfig
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Model(KLBaseModel):
     state_dropout = 0.0
@@ -34,7 +35,8 @@ class Model(KLBaseModel):
 
         self.lambda_min = torch.zeros(config.layers) - config.lambda_min
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
-
+        self.lambda_min = self.lambda_min.to(device)
+        self.lambda_max = self.lambda_max.to(device)
 
 
     def set_epoch(self, epoch: int):

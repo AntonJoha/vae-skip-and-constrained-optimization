@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 
 TDLGMConfig = SeriesConfig
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Model(KLBaseModel):
     state_dropout = 0.1
@@ -23,11 +24,13 @@ class Model(KLBaseModel):
         super().__init__(config)
         self.last_train_metrics = None
         self.kl_target = float(self.config.beta)
-        self.lambda_ = torch.zeros(config.layers)
+        self.lambda_ = torch.zeros(config.layers).to(device)
         self.old_violation = torch.full((config.layers,), torch.inf)
 
         self.lambda_min = torch.zeros(config.layers) - 50
         self.lambda_max = torch.zeros(config.layers) + 50
+        self.lambda_min = self.lambda_min.to(device)
+        self.lambda_max = self.lambda_max.to(device)
 
 
 
@@ -90,6 +93,9 @@ class Model(KLBaseModel):
             self.rho *= self.rho_scaler
 
         self.old_violation = constrain_violation
+        print(self.rho, residual, self.lambda_min, self.lambda_max)
+
+
         self.lambda_ = torch.clamp(
             self.lambda_.to(residual.device) + self.rho * residual, self.lambda_min, self.lambda_max
         )

@@ -6,6 +6,7 @@ from experiments.util import SeriesConfig
 
 from .kl_base import KLBaseModel
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
 
 TDLGMConfig = SeriesConfig
@@ -32,7 +33,8 @@ class Model(KLBaseModel):
 
         self.lambda_min = torch.zeros(config.layers) + config.lambda_min
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
-
+        self.lambda_min = self.lambda_min.to(device)
+        self.lambda_max = self.lambda_max.to(device)
         self.old_violation = torch.full((config.layers,), torch.inf)
 
     def set_epoch(self, epoch: int):
