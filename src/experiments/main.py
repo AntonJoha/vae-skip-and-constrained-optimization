@@ -284,6 +284,13 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 2,
                 6,
             ),
+            latent_dim=trial.suggest_categorical(
+                "latent_dim",
+                [8, 16, 32, 64, 128],
+            ),
+            tdlgm_layers=trial.suggest_int("tdlgm_layers", 1, 6),
+            alpha=trial.suggest_float("alpha", 1.0, 10.0, log=True),
+            rho_scaler=trial.suggest_float("rho_scaler", 1.001, 1.5, log=True),
             batch_size=trial.suggest_categorical(
                 "batch_size",
                 [16, 32, 64, 128],
