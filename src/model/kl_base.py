@@ -208,7 +208,7 @@ class KLBaseModel(nn.Module):
         mean2: torch.Tensor,
         logvar2: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.combine_gaussian == False:
+        if not self.combine_gaussian:
             return mean1, logvar1
 
         log_tau1, log_tau2 = -logvar1, -logvar2

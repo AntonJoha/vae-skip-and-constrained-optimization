@@ -26,6 +26,11 @@ class Model(KLBaseModel):
         self.lambda_ = torch.zeros(config.layers)
         self.old_violation = torch.full((config.layers,), torch.inf)
 
+        self.lambda_min = torch.zeros(config.layers) - 50
+        self.lambda_max = torch.zeros(config.layers) + 50
+
+
+
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return layered_kl.new_full(
             layered_kl.shape,
@@ -86,7 +91,7 @@ class Model(KLBaseModel):
 
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual, -50, 50
+            self.lambda_.to(residual.device) + self.rho * residual, self.lambda_min, self.lambda_max
         )
 
         log.info(

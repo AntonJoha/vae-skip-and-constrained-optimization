@@ -18,7 +18,6 @@ class Model(KLBaseModel):
     combine_gaussian = False
     posterior_reduce = "mean"
     reverse_posterior_list = False
-
     def __init__(self, config):
         super().__init__(config)
         self.lambda_ = 0.0
@@ -31,6 +30,12 @@ class Model(KLBaseModel):
         self.reduction_threshold = self.config.reduction_threshold
         self.lambda_ = torch.zeros(config.layers)
         self.old_violation = torch.full((config.layers,), torch.inf)
+
+
+        self.lambda_min = torch.zeros(config.layers) - config.lambda_min
+        self.lambda_max = torch.zeros(config.layers) + config.lambda_max
+
+
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -87,7 +92,7 @@ class Model(KLBaseModel):
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual, -50, 50
+            self.lambda_.to(residual.device) + self.rho * residual, self.lambda_min, self.lambda_max
         )
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",

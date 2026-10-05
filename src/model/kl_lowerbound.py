@@ -29,6 +29,10 @@ class Model(KLBaseModel):
         self.rho_scaler = float(self.config.rho_scaler)
         self.reduction_threshold = self.config.reduction_threshold
         self.lambda_ = torch.zeros(config.layers)
+
+        self.lambda_min = torch.zeros(config.layers) + config.lambda_min
+        self.lambda_max = torch.zeros(config.layers) + config.lambda_max
+
         self.old_violation = torch.full((config.layers,), torch.inf)
 
     def set_epoch(self, epoch: int):

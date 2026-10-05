@@ -98,6 +98,9 @@ class SeriesConfig(BaselineConfig):
     vae_baseline: bool = False
     grad_diagnostics: bool = False
 
+    lambda_min: float = 0.0
+    lambda_max: float = 50
+
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:
     return {
