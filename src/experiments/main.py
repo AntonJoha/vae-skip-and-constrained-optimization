@@ -321,7 +321,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 "beta",
                 1e-2,
                 1),
-            lambda_min=trial.suggest_categorical()(
+            lambda_min=trial.suggest_categorical(
                 "lambda_min",
                 [.5, 1, 5]
             ),
