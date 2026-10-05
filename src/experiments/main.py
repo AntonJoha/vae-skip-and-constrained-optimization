@@ -100,7 +100,7 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
         model = Reg_Model(runtime).to(device)
 
     log.info("Initializing model with Adam and lr = %.5f", runtime.learning_rate)
-    
+
     inner_param = model.inner_parameters()
     inner_optimizer = None
     if inner_param is not None:
@@ -110,7 +110,6 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     middle_optimizer = None
     if middle_param is not None:
         middle_optimizer = Adam(model.middle_parameters(), lr=runtime.learning_rate)
-
 
     if runtime.verbose:
         log.info(
@@ -143,21 +142,21 @@ def train_model(
     _set_input_output_dim(runtime, train_loader)
 
     model, inner_optimizer, middle_optimizer = build_runtime_model(runtime)
-    
+
     scheduler_inner = None
     if inner_optimizer is not None:
         scheduler_inner = torch.optim.lr_scheduler.ReduceLROnPlateau(
             inner_optimizer,
-            mode='min',
+            mode="min",
             factor=0.2,
             patience=10,
         )
-    
+
     scheduler_middle = None
     if middle_optimizer is not None:
         scheduler_middle = torch.optim.lr_scheduler.ReduceLROnPlateau(
             middle_optimizer,
-            mode='min',
+            mode="min",
             factor=0.1,
             patience=10,
         )
@@ -192,7 +191,9 @@ def train_model(
 
         for batch in train_loader:
             x, y = unpack_batch(batch)
-            epoch_losses.append(model.train_step(x, y, middle_optimizer, inner_optimizer))
+            epoch_losses.append(
+                model.train_step(x, y, middle_optimizer, inner_optimizer)
+            )
 
         model.outer_train_step(train_loader)
 
@@ -216,7 +217,7 @@ def train_model(
             )
             log.info(" Prior NLL on train: %.5f", prior)
             log.info(" Layered KL: %s", layered_kl)
-        
+
         if scheduler_middle is not None:
             scheduler_middle.step(val_loss)
         if scheduler_inner is not None:
@@ -267,9 +268,7 @@ def train_model(
             if runtime.verbose:
                 log.info("Saved checkpoint to %s", saved_path)
 
-        
         if epochs_without_improvement >= early_stopping_patience and trial is None:
-            
             if runtime.verbose:
                 log.info(
                     "Early stopping after %d epochs without val NLL improvement.",
@@ -304,7 +303,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             base_runtime,
             hidden_dim=trial.suggest_categorical(
                 "hidden_dim",
-                [ 32, 64, 128, 256, 512],
+                [32, 64, 128, 256, 512],
             ),
             layers=trial.suggest_int(
                 "layers",
@@ -344,15 +343,9 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
-            beta=trial.suggest_float(
-                "beta",
-                1e-2,
-                1),
-            lambda_min=trial.suggest_categorical(
-                "lambda_min",
-                [.5, 1, 5]
-            ),
-            skip_connection=trial.suggest_categorical("skip_connection", [True, False])
+            beta=trial.suggest_float("beta", 1e-2, 1),
+            lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
+            skip_connection=trial.suggest_categorical("skip_connection", [True, False]),
         )
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
@@ -399,19 +392,31 @@ def parse_args() -> argparse.Namespace:
         "--epochs", type=int, default=1000, help="Number of training epochs."
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
-    parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning.")
-    parser.add_argument("--skip_connection", action="store_true", help="Enable hyperparameter tuning.")
-    parser.add_argument("--upper", action="store_true", help="Enable the upper bound KL Model")
-    parser.add_argument("--lower", action="store_true", help="Enable the lower bound KL Model")
-    parser.add_argument("--learning_rate", type=float, default=0.001, help="Fix the learning rate")
-    parser.add_argument("--reduced_dataset", type=float, default=1.0, help="Reduce the used dataset")
+    parser.add_argument(
+        "--tune", action="store_true", help="Enable hyperparameter tuning."
+    )
+    parser.add_argument(
+        "--skip_connection", action="store_true", help="Enable hyperparameter tuning."
+    )
+    parser.add_argument(
+        "--upper", action="store_true", help="Enable the upper bound KL Model"
+    )
+    parser.add_argument(
+        "--lower", action="store_true", help="Enable the lower bound KL Model"
+    )
+    parser.add_argument(
+        "--learning_rate", type=float, default=0.001, help="Fix the learning rate"
+    )
+    parser.add_argument(
+        "--reduced_dataset", type=float, default=1.0, help="Reduce the used dataset"
+    )
     parser.add_argument("--latent_dim", type=int, default=16)
     parser.add_argument("--hidden_dim", type=int, default=16)
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--beta", type=float, default=1)
     parser.add_argument("--rho", type=float, default=2.0)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--reverse", action="store_true",  default=False)
+    parser.add_argument("--reverse", action="store_true", default=False)
     parser.add_argument("--vae-baseline", action="store_true", default=False)
 
     parser.add_argument("--lr_lambda", type=float, default=0.1)
@@ -433,8 +438,6 @@ def main() -> None:
         return
 
     train(base_runtime)
-
-
 
 
 if __name__ == "__main__":

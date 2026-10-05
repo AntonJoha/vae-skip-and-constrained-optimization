@@ -40,7 +40,6 @@ class Baseline(nn.Module):
         self.loss = nn.GaussianNLLLoss()
         self.config = config
 
-
     def _to_output_shape(self, x):
         x = x.view(x.size(0), self.config.horizon, self.config.output_dim)
         return x.squeeze(-1) if self.config.output_dim == 1 else x
@@ -114,7 +113,7 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 
 def train_model(
-    runtime:BaselineConfig,
+    runtime: BaselineConfig,
     epochs: int | None = None,
     trial: optuna.Trial | None = None,
     save_to: Path | None = None,
@@ -132,7 +131,7 @@ def train_model(
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
-        mode='min',
+        mode="min",
         factor=0.1,
         patience=5,
     )
@@ -160,7 +159,6 @@ def train_model(
             epoch_losses.append(model.train_step(x, y, optimizer))
 
         val_loss = evaluate(model, val_loader)
-        
 
         if runtime.verbose:
             mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
@@ -184,7 +182,7 @@ def train_model(
                     logger.info("Saved checkpoint to %s", saved_path)
         else:
             epochs_without_improvement += 1
-        
+
         scheduler.step(val_loss)
         if trial is not None:
             trial.report(val_loss, epoch)
@@ -202,7 +200,7 @@ def train_model(
             if runtime.verbose:
                 logger.info("Saved checkpoint to %s", saved_path)
 
-        if epochs_without_improvement >= early_stopping_patience*2:
+        if epochs_without_improvement >= early_stopping_patience * 2:
             if runtime.verbose:
                 logger.info(
                     "Early stopping after %d epochs without val NLL improvement.",
@@ -235,7 +233,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             base_runtime,
             hidden_dim=trial.suggest_categorical(
                 "hidden_dim",
-                [ 32, 64, 128, 256, 512],
+                [32, 64, 128, 256, 512],
             ),
             layers=trial.suggest_int(
                 "layers",

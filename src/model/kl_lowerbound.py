@@ -85,7 +85,8 @@ class Model(KLBaseModel):
         constrain_violation = torch.clamp(residual, min=0.0)
         if torch.any(
             constrain_violation
-            > self.reduction_threshold * self.old_violation.to(constrain_violation.device)
+            > self.reduction_threshold
+            * self.old_violation.to(constrain_violation.device)
         ).item():
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
@@ -104,7 +105,11 @@ class Model(KLBaseModel):
         )
 
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, inner_optimizer, middle_optimizer: torch.optim.Optimizer
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        inner_optimizer,
+        middle_optimizer: torch.optim.Optimizer,
     ) -> float:
         self.train()
         inner_optimizer.zero_grad()
@@ -121,7 +126,7 @@ class Model(KLBaseModel):
         )
         prior_kl.backward()
         inner_optimizer.step()
-    
+
         middle_optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
@@ -138,9 +143,9 @@ class Model(KLBaseModel):
         residual = self._layer_target(layered_kl) - layered_kl
         lambda_ = self.lambda_.to(residual.device)
         shifted = lambda_ + self.rho * residual
-        al_penalty = (
-            torch.clamp(shifted, min=0.0) ** 2 - lambda_**2
-        ) / (2.0 * self.rho)
+        al_penalty = (torch.clamp(shifted, min=0.0) ** 2 - lambda_**2) / (
+            2.0 * self.rho
+        )
         loss = rec + al_penalty.sum()
         loss.backward()
         middle_optimizer.step()

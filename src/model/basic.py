@@ -35,7 +35,7 @@ class SequenceRNNEncoder(nn.Module):
             batch_first=True,
         )
 
-        #self.norm = nn.LayerNorm(hidden_dim)
+        # self.norm = nn.LayerNorm(hidden_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -45,6 +45,7 @@ class SequenceRNNEncoder(nn.Module):
         output, _ = self.rnn(x)
 
         return output
+
 
 class SequenceAttentionEncoder(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int, layers: int, seq_len: int):
@@ -85,9 +86,7 @@ class SequenceAttentionEncoderCNN(nn.Module):
 
         self.input_proj = nn.Linear(input_dim, hidden_dim)
 
-        self.position_embedding = nn.Parameter(
-            torch.zeros(1, seq_len, hidden_dim)
-        )
+        self.position_embedding = nn.Parameter(torch.zeros(1, seq_len, hidden_dim))
 
         self.encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
@@ -142,9 +141,6 @@ def _make_mlp(input_dim: int, hidden_dim: int, output_dim: int) -> nn.Sequential
     )
 
 
-
-
-
 class Model(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -161,24 +157,27 @@ class Model(nn.Module):
             config.hidden_dim,
             num_layers=config.layers,
             batch_first=True,
-            )
+        )
 
         self.posterior_state = nn.LSTM(
             config.input_dim,
             config.hidden_dim,
             num_layers=config.layers,
             batch_first=True,
-            )
+        )
 
-        self.module_p = _make_mlp(config.hidden_dim, config.hidden_dim, config.hidden_dim*2)
-        self.module_q = _make_mlp(config.hidden_dim, config.hidden_dim, config.hidden_dim*2)
+        self.module_p = _make_mlp(
+            config.hidden_dim, config.hidden_dim, config.hidden_dim * 2
+        )
+        self.module_q = _make_mlp(
+            config.hidden_dim, config.hidden_dim, config.hidden_dim * 2
+        )
 
         self.linear = nn.Linear(
             config.hidden_dim, config.output_dim * 2 * config.horizon
         )
-        self.nllLoss= nn.GaussianNLLLoss()
+        self.nllLoss = nn.GaussianNLLLoss()
         self.config = config
-
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -204,27 +203,35 @@ class Model(nn.Module):
     def device(self) -> torch.device:
         return next(self.parameters()).device
 
-    
-    def get_layered_kl(self, x,y):
-        return torch.Tensor([0]) # this will be implemented in a more advanced stage
-
-
-
+    def get_layered_kl(self, x, y):
+        return torch.Tensor([0])  # this will be implemented in a more advanced stage
 
     def compute_losses(self, x, y, prior=True):
-        mean, logvar, mean_p, logvar_p, mean_q, logvar_q = self._latent_pass(x, y, prior=prior)
+        mean, logvar, mean_p, logvar_p, mean_q, logvar_q = self._latent_pass(
+            x, y, prior=prior
+        )
         loss = self.nllLoss(mean, self._target(y, mean), logvar.exp())
         kl_loss = torch.mean(
-            -0.5 * torch.sum(1 + logvar_q - logvar_p - ((mean_q - mean_p) ** 2 + logvar_q.exp()) / logvar_p.exp(), dim=1)
+            -0.5
+            * torch.sum(
+                1
+                + logvar_q
+                - logvar_p
+                - ((mean_q - mean_p) ** 2 + logvar_q.exp()) / logvar_p.exp(),
+                dim=1,
+            )
         )
-        return loss, kl_loss # need kl as well
+        return loss, kl_loss  # need kl as well
 
-    
     def _latent_pass(self, x, y=None, prior=True):
-        mean_q, logvar_q, mean_p, logvar_p = None, None, None, None # returns none if unused
+        mean_q, logvar_q, mean_p, logvar_p = (
+            None,
+            None,
+            None,
+            None,
+        )  # returns none if unused
         if x.ndim == 2:
             x = x.unsqueeze(-1)
-
 
         if y is not None:
             y_full = torch.cat([x, y], dim=1)
@@ -234,18 +241,14 @@ class Model(nn.Module):
 
         x, _ = self.prior_state(x)
         x = x[:, -1, :]
-        
+
         mean_p, logvar_p = self.module_p(x).chunk(2, dim=-1)
         logvar_p = torch.clamp(logvar_p, -5, 5)
-
 
         if prior:
             z = mean_p + torch.exp(0.5 * logvar_p) * torch.randn_like(mean_p)
         else:
             z = mean_q + torch.exp(0.5 * logvar_q) * torch.randn_like(mean_q)
-
-
-
 
         x = self.linear(z)
 
@@ -253,13 +256,9 @@ class Model(nn.Module):
             x[:, : self.config.output_dim * self.config.horizon]
         )
         logvar = x[:, self.config.output_dim * self.config.horizon :]
-        
-        logvar = self._to_output_shape(
-            torch.clamp(logvar, -5,5)
-        )
+
+        logvar = self._to_output_shape(torch.clamp(logvar, -5, 5))
         return mean, logvar, mean_p, logvar_p, mean_q, logvar_q
-
-
 
     def train_step(
         self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
@@ -268,13 +267,22 @@ class Model(nn.Module):
         optimizer.zero_grad()
         x = x.to(self.device)
         y = y.to(self.device)
-        mean, logvar, mean_p, logvar_p, mean_q, logvar_q = self._latent_pass(x, y, prior=False)
+        mean, logvar, mean_p, logvar_p, mean_q, logvar_q = self._latent_pass(
+            x, y, prior=False
+        )
         loss = self.nllLoss(mean, self._target(y, mean), logvar.exp())
         kl_loss = torch.mean(
-            -0.5 * torch.sum(1 + logvar_q - logvar_p - ((mean_q - mean_p) ** 2 + logvar_q.exp()) / logvar_p.exp(), dim=1)
+            -0.5
+            * torch.sum(
+                1
+                + logvar_q
+                - logvar_p
+                - ((mean_q - mean_p) ** 2 + logvar_q.exp()) / logvar_p.exp(),
+                dim=1,
+            )
         )
-        
-        loss += kl_loss*3
+
+        loss += kl_loss * 3
         loss.backward()
         optimizer.step()
         return float(loss)

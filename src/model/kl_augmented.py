@@ -29,8 +29,6 @@ class Model(KLBaseModel):
         self.lambda_min = torch.zeros(config.layers) - 50
         self.lambda_max = torch.zeros(config.layers) + 50
 
-
-
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return layered_kl.new_full(
             layered_kl.shape,
@@ -85,13 +83,16 @@ class Model(KLBaseModel):
 
         if torch.any(
             constrain_violation
-            > self.reduction_threshold * self.old_violation.to(constrain_violation.device)
+            > self.reduction_threshold
+            * self.old_violation.to(constrain_violation.device)
         ).item():
             self.rho *= self.rho_scaler
 
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual, self.lambda_min, self.lambda_max
+            self.lambda_.to(residual.device) + self.rho * residual,
+            self.lambda_min,
+            self.lambda_max,
         )
 
         log.info(
@@ -106,7 +107,11 @@ class Model(KLBaseModel):
         )
 
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer, inner_optimizer=None
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        optimizer: torch.optim.Optimizer,
+        inner_optimizer=None,
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)
@@ -144,17 +149,22 @@ class Model(KLBaseModel):
                 print(f"  {loss_name}:")
                 for group_name, norm in groups.items():
                     print(f"    {group_name:20s}: {norm:.6e}")
-            print("Losses: Reconstruction: ", rec.item(), " kl_cons: ", kl_constraint.item())
-            m, l, *_ = self._latent_pass(x, y=None, prior=True)
+            print(
+                "Losses: Reconstruction: ",
+                rec.item(),
+                " kl_cons: ",
+                kl_constraint.item(),
+            )
+            prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
             print(
                 "Logvar posterior: ",
                 logvar[0][0][0].item(),
                 " Posterior mean: ",
                 mean[0][0][0].item(),
                 "\nLogvar prior",
-                l[0][0][0].item(),
+                prior_logvar[0][0][0].item(),
                 "Prior mean: ",
-                m[0][0][0].item(),
+                prior_mean[0][0][0].item(),
             )
 
         loss.backward()
@@ -168,11 +178,14 @@ class Model(KLBaseModel):
 
         return float(loss.detach())
 
-
     def inner_parameters(self):
         return None
-    
+
     def middle_parameters(self):
-        return list(self.prior_state.parameters()) + list(self.prior_layers.parameters()) + list(self.to_output.parameters()) + list(self.posterior_state.parameters()) + list(self.posterior_layers.parameters())
-
-
+        return (
+            list(self.prior_state.parameters())
+            + list(self.prior_layers.parameters())
+            + list(self.to_output.parameters())
+            + list(self.posterior_state.parameters())
+            + list(self.posterior_layers.parameters())
+        )
