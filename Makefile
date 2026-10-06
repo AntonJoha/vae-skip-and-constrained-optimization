@@ -12,6 +12,10 @@ upper:
 	python -m experiments.main --verbose --horizon 5 --learning_rate 0.0001 --hidden_dim 512 --layers 3 --batch_size 64 --upper --skip_connection --reverse --beta 1
 
 
+inner_tune:
+	python -m experiments.main --verbose --tune --horizon $(horizon) --inner_kl --grad_diagnostics
+
+
 
 
 tune:
