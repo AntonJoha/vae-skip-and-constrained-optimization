@@ -34,7 +34,10 @@ class Model(KLBaseModel):
         self.lambda_ = torch.zeros(config.layers)
         self.old_violation = torch.full((config.layers,), torch.inf)
 
-        self.lambda_min = torch.zeros(config.layers) - config.lambda_min
+        self.lambda_min = torch.zeros(config.layers)
+        if config.lambda_min > 0:
+            self.lambda_min +=  config.lambda_min
+
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
@@ -133,20 +136,15 @@ class Model(KLBaseModel):
 
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
         residual = layered_kl - self._layer_target(layered_kl)
-        kl_constraint = (
-            self.lambda_.to(residual.device) * residual
-            + 0.5 * self.rho * residual.pow(2)
-        ).sum()
-        loss = rec + kl_constraint
+        
+        lambda_ = self.lambda_.to(residual.device)
+        shifted = lambda_ + self.rho * residual
+        al_penalty = (torch.clamp(shifted, min=0.0) ** 2 - lambda_**2) / (
+            2.0 * self.rho
+        )
+        loss = rec + al_penalty.sum()
         loss.backward()
         optimizer.step()
-
-        with torch.no_grad():
-            self.lambda_ = torch.clamp(
-                self.lambda_.to(residual.device) + self.rho * residual.detach(),
-                min=0.0,
-                max=50,
-            )
 
         self.last_train_metrics = {
             "posterior_recon": float(rec.detach()),
