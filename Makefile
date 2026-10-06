@@ -30,7 +30,7 @@ tune_reverse:
 	python -m experiments.main --verbose --tune --horizon $(horizon) --reverse
 
 upper_tune:
-	python -m experiments.main --verbose --tune --upper --horizon $(horizon)
+	python -m experiments.main --verbose --tune --upper --horizon $(horizon) --grad_diagnostics
 
 upper_tune_reverse:
 	python -m experiments.main --verbose --tune --upper --horizon $(horizon) --reverse
