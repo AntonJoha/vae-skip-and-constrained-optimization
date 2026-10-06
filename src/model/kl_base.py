@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 import torch
 from torch import nn
@@ -434,7 +435,8 @@ class KLBaseModel(nn.Module):
         for grad in grads:
             if grad is not None:
                 squared_norm += grad.detach().pow(2).sum()
-        return (squared_norm.sqrt() / num_weights**0.5).item()
+        squared_norm = np.float64(squared_norm)
+        return (np.sqrt(squared_norm) / num_weights**0.5).item()
 
     def inner_parameters(self):
         return list(self.posterior_state.parameters()) + list(

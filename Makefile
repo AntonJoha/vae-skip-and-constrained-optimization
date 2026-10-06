@@ -2,7 +2,7 @@
 horizon = 20
 
 main:
-	python -m experiments.main --verbose --horizon 20 --batch_size 32 --hidden_dim 128 --layers 2 --learning_rate 0.0009 --lr_lambda 0.00002 --beta 0.65
+	python -m experiments.main --verbose --horizon 20 --batch_size 32 --hidden_dim 128 --layers 2 --learning_rate 0.0009 --lr_lambda 0.00002 --beta 0.65 --grad_diagnostics
 
 
 bad:

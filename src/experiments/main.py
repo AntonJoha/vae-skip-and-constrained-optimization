@@ -419,6 +419,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reverse", action="store_true", default=False)
     parser.add_argument("--vae-baseline", action="store_true", default=False)
 
+    parser.add_argument("--grad_diagnostics", action="store_true", default=False)
     parser.add_argument("--lr_lambda", type=float, default=0.1)
 
     return parser.parse_args()
