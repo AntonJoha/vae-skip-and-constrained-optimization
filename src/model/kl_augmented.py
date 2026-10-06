@@ -12,6 +12,7 @@ TDLGMConfig = SeriesConfig
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class Model(KLBaseModel):
     state_dropout = 0.1
     layer_dropout = 0.1
@@ -94,7 +95,6 @@ class Model(KLBaseModel):
         self.old_violation = constrain_violation
         print(self.rho, residual, self.lambda_min, self.lambda_max)
 
-
         self.lambda_ = torch.clamp(
             self.lambda_.to(residual.device) + self.rho * residual,
             self.lambda_min,
@@ -149,30 +149,6 @@ class Model(KLBaseModel):
             + 0.5 * self.rho * residual.pow(2)
         ).sum()
         loss = rec + kl_constraint
-
-        if self.config.grad_diagnostics:
-            grad_info = self._gradient_diagnostics(
-                {
-                    "reconstruction": rec,
-                    "kl_constraint": kl_constraint,
-                }
-            )
-
-            log.info("Scaled gradient norms:")
-            for loss_name, groups in grad_info.items():
-                log.info("  %s:", loss_name)
-                for group_name, norm in groups.items():
-                    log.info("    %-20s %.6e", group_name, norm)
-            log.info("  reconstruction=%.6f kl_constraint=%.6f", rec.item(), kl_constraint.item())
-            prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
-            log.info(
-                "  posterior mean=%.6f logvar=%.6f prior mean=%.6f prior logvar=%.6f",
-                mean[0][0][0].item(),
-                logvar[0][0][0].item(),
-                prior_mean[0][0][0].item(),
-                prior_logvar[0][0][0].item(),
-            )
-
         loss.backward()
         optimizer.step()
 
@@ -183,6 +159,66 @@ class Model(KLBaseModel):
         }
 
         return float(loss.detach())
+
+
+    def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
+
+
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+                x,y,prior=False)
+
+        rec, _ = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=prior_list,
+            combined_posterior_list=combined_posterior_list,
+        )
+
+        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        residual = layered_kl - self._layer_target(layered_kl)
+
+        kl_constraint = (
+            self.lambda_.to(residual.device) * residual
+            + 0.5 * self.rho * residual.pow(2)
+        ).sum()
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "reconstruction": rec,
+                "kl_constraint": kl_constraint,
+            }
+        )
+
+        log.info("Scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+        log.info(
+            "  reconstruction=%.6f kl_constraint=%.6f",
+            rec.item(),
+            kl_constraint.item(),
+        )
+
+
+        cosine_similarity = self.gradient_cosine_similarity(rec, kl_constraint)
+        log.info("Cosine reconstruction, kl_constraint:")
+        for group_name, similarity in cosine_similarity.items():
+            log.info("    %-20s %.6f", group_name, similarity)
+
+
+        prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
+        log.info(
+            "  posterior mean=%.6f logvar=%.6f prior mean=%.6f prior logvar=%.6f",
+            mean[0][0][0].item(),
+            logvar[0][0][0].item(),
+            prior_mean[0][0][0].item(),
+            prior_logvar[0][0][0].item(),
+        )
+
+
+
 
     def inner_parameters(self):
         return None

@@ -217,6 +217,12 @@ def train_model(
             )
             log.info(" Prior NLL on train: %.5f", prior)
             log.info(" Layered KL: %s", layered_kl)
+            if runtime.grad_diagnostics:
+                for batch in train_loader:
+                    x, y = unpack_batch(batch)
+                    model.print_gradients(x, y)
+                    break
+
 
         if scheduler_middle is not None:
             scheduler_middle.step(val_loss)

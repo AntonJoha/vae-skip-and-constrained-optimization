@@ -37,7 +37,7 @@ upper_tune_reverse:
 
 
 lower_tune:
-	python -m experiments.main --verbose --tune --lower --horizon $(horizon)
+	python -m experiments.main --verbose --tune --lower --horizon $(horizon) --grad_diagnostics
 
 
 vrnn:

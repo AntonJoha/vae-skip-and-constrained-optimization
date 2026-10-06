@@ -149,7 +149,133 @@ class Model(KLBaseModel):
             2.0 * self.rho
         )
         loss = rec + al_penalty.sum()
+
         loss.backward()
         middle_optimizer.step()
 
         return float(loss.detach())
+
+
+
+
+
+    def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
+
+
+
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+            x, y, prior=False
+        )
+        _, prior_kl = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=prior_list,
+            combined_posterior_list=[t.detach() for t in combined_posterior_list],
+        )
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "prior_kl": prior_kl,
+            }
+        )
+
+        log.info("Inner step scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+
+
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "prior_kl": prior_kl,
+            }
+        )
+
+        log.info("Inner step scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+
+
+
+
+
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+            x, y, prior=False
+        )
+        rec, _ = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=[t.detach() for t in prior_list],
+            combined_posterior_list=combined_posterior_list,
+        )
+
+        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        residual = self._layer_target(layered_kl) - layered_kl
+        lambda_ = self.lambda_.to(residual.device)
+        shifted = lambda_ + self.rho * residual
+        al_penalty = (torch.clamp(shifted, min=0.0) ** 2 - lambda_**2) / (
+            2.0 * self.rho
+        )
+        al_pentaly = al_penalty.sum()
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "reconstruction": rec,
+                "al_pentaly": al_pentaly,
+            }
+        )
+
+        log.info("Scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+        log.info(
+            "  reconstruction=%.6f kl_constraint=%.6f",
+            rec.item(),
+            al_pentaly.item(),
+        )
+
+
+        cosine_similarity = self.gradient_cosine_similarity(rec, al_pentaly)
+
+        log.info(
+            "  Cosine reconstruction, al_penalty:",
+        )
+        for group_name, similarity in cosine_similarity.items():
+            log.info("    %-20s %.6f", group_name, similarity)
+
+        cosine_similarity = self.gradient_cosine_similarity(prior_kl, al_pentaly)
+        log.info(
+            "  Cosine prior_kl, al_penalty:",
+        )
+        for group_name, similarity in cosine_similarity.items():
+            log.info("    %-20s %.6f", group_name, similarity)
+
+
+        cosine_similarity = self.gradient_cosine_similarity(prior_kl, rec)
+        log.info(
+            "  Cosine prior_kl, reconstruction:",
+        )
+        for group_name, similarity in cosine_similarity.items():
+            log.info("    %-20s %.6f", group_name, similarity)
+
+
+        prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
+        log.info(
+            "  posterior mean=%.6f logvar=%.6f prior mean=%.6f prior logvar=%.6f",
+            mean[0][0][0].item(),
+            logvar[0][0][0].item(),
+            prior_mean[0][0][0].item(),
+            prior_logvar[0][0][0].item(),
+        )
+
+
+       
+

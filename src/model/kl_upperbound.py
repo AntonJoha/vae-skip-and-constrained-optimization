@@ -12,6 +12,7 @@ TDLGMConfig = SeriesConfig
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class Model(KLBaseModel):
     state_dropout = 0.0
     layer_dropout = 0.0
@@ -37,7 +38,6 @@ class Model(KLBaseModel):
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
-
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -111,7 +111,11 @@ class Model(KLBaseModel):
         )
 
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer, _inner=None
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        optimizer: torch.optim.Optimizer,
+        _inner=None,
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)

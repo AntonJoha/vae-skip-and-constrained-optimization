@@ -1,6 +1,6 @@
 import logging
-import numpy as np
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -450,7 +450,7 @@ class KLBaseModel(nn.Module):
             + list(self.to_output.parameters())
         )
 
-    def _gradient_diagnostics(self, losses):
+    def gradient_diagnostics(self, losses):
         groups = self._parameter_groups()
         result = {}
         for loss_name, loss in losses.items():
@@ -458,3 +458,41 @@ class KLBaseModel(nn.Module):
             for group_name, parameters in groups.items():
                 result[loss_name][group_name] = self._grad_norm(loss, parameters)
         return result
+
+
+
+    def gradient_cosine_similarity(self, loss1, loss2):
+
+        groups = self._parameter_groups()
+        result = {}
+        for group_name, parameters in groups.items():
+            result[group_name] = self.__gradient_cosine(loss1, loss2, parameters)
+        return result
+
+    
+    def __gradient_cosine(self, loss1, loss2, parameters):
+        parameters = [p for p in parameters if p.requires_grad]
+        grads1 = torch.autograd.grad(
+            loss1,
+            parameters,
+            retain_graph=True,
+            allow_unused=True,
+        )
+        grads2 = torch.autograd.grad(
+            loss2,
+            parameters,
+            retain_graph=True,
+            allow_unused=True,
+        )
+        dot_product = 0.0
+        norm1 = 0.0
+        norm2 = 0.0
+        for g1, g2 in zip(grads1, grads2):
+            if g1 is not None and g2 is not None:
+                dot_product += (g1 * g2).sum()
+                norm1 += (g1**2).sum()
+                norm2 += (g2**2).sum()
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        return (dot_product / (torch.sqrt(norm1) * torch.sqrt(norm2))).item()
+
