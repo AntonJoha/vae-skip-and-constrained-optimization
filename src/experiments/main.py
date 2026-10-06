@@ -218,11 +218,20 @@ def train_model(
             log.info(" Prior NLL on train: %.5f", prior)
             log.info(" Layered KL: %s", layered_kl)
             if runtime.grad_diagnostics:
+                count = 10
+                x_t, y_t = None, None
                 for batch in train_loader:
                     x, y = unpack_batch(batch)
-                    model.print_gradients(x, y)
-                    break
+                    if x_t is None:
+                        x_t, y_t = x, y
+                    else:
+                        x_t = torch.cat((x_t, x), dim=0)
+                        y_t = torch.cat((y_t, y), dim=0)
+                    count -= 1
+                    if count <= 0:
+                        break
 
+                model.print_gradients(x_t, y_t)
 
         if scheduler_middle is not None:
             scheduler_middle.step(val_loss)
