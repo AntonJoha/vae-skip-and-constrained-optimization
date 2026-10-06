@@ -155,3 +155,56 @@ class Model(KLBaseModel):
         }
 
         return float(loss.detach())
+
+    def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+            x, y, prior=False
+        )
+        rec, _ = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=[t.detach() for t in prior_list],
+            combined_posterior_list=combined_posterior_list,
+        )
+
+        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        residual = layered_kl - self._layer_target(layered_kl)
+        lambda_ = self.lambda_.to(residual.device)
+        shifted = lambda_ + self.rho * residual
+        al_penalty = (torch.clamp(shifted, min=0.0) ** 2 - lambda_**2) / (
+            2.0 * self.rho
+        )
+        al_penalty = al_penalty.sum()
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "reconstruction": rec,
+                "kl_constraint": al_penalty,
+            }
+        )
+
+        log.info("Scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+        log.info(
+            "  reconstruction=%.6f kl_constraint=%.6f",
+            rec.item(),
+            al_penalty.item(),
+        )
+
+        cosine_similarity = self.gradient_cosine_similarity(rec, al_penalty)
+        log.info("Cosine reconstruction, kl_constraint:")
+        for group_name, similarity in cosine_similarity.items():
+            log.info("    %-20s %.6f", group_name, similarity)
+
+        prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
+        log.info(
+            "  posterior mean=%.6f logvar=%.6f prior mean=%.6f prior logvar=%.6f",
+            mean[0][0][0].item(),
+            logvar[0][0][0].item(),
+            prior_mean[0][0][0].item(),
+            prior_logvar[0][0][0].item(),
+        )
