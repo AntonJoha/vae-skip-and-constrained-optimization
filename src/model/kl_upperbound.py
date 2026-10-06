@@ -37,7 +37,8 @@ class Model(KLBaseModel):
         self.lambda_min = torch.zeros(config.layers)
         if config.lambda_min > 0:
             self.lambda_min += config.lambda_min
-
+        
+        self.lambda_min = torch.zeros(config.layers)
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
