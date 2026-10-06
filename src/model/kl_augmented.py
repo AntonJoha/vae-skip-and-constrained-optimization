@@ -158,27 +158,19 @@ class Model(KLBaseModel):
                 }
             )
 
-            print("\nGradient norms:")
+            log.info("Scaled gradient norms:")
             for loss_name, groups in grad_info.items():
-                print(f"  {loss_name}:")
+                log.info("  %s:", loss_name)
                 for group_name, norm in groups.items():
-                    print(f"    {group_name:20s}: {norm:.6e}")
-            print(
-                "Losses: Reconstruction: ",
-                rec.item(),
-                " kl_cons: ",
-                kl_constraint.item(),
-            )
+                    log.info("    %-20s %.6e", group_name, norm)
+            log.info("  reconstruction=%.6f kl_constraint=%.6f", rec.item(), kl_constraint.item())
             prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
-            print(
-                "Logvar posterior: ",
-                logvar[0][0][0].item(),
-                " Posterior mean: ",
+            log.info(
+                "  posterior mean=%.6f logvar=%.6f prior mean=%.6f prior logvar=%.6f",
                 mean[0][0][0].item(),
-                "\nLogvar prior",
-                prior_logvar[0][0][0].item(),
-                "Prior mean: ",
+                logvar[0][0][0].item(),
                 prior_mean[0][0][0].item(),
+                prior_logvar[0][0][0].item(),
             )
 
         loss.backward()
