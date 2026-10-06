@@ -421,6 +421,9 @@ class KLBaseModel(nn.Module):
 
     def _grad_norm(self, loss, parameters):
         parameters = [p for p in parameters if p.requires_grad]
+        num_weights = sum(p.numel() for p in parameters)
+        if num_weights == 0:
+            return 0.0
         grads = torch.autograd.grad(
             loss,
             parameters,
@@ -428,14 +431,10 @@ class KLBaseModel(nn.Module):
             allow_unused=True,
         )
         squared_norm = 0.0
-        used = 0
         for grad in grads:
             if grad is not None:
                 squared_norm += grad.detach().pow(2).sum()
-                used += 1
-        if used == 0:
-            return 0.0
-        return squared_norm.sqrt().item()
+        return (squared_norm.sqrt() / num_weights**0.5).item()
 
     def inner_parameters(self):
         return list(self.posterior_state.parameters()) + list(
