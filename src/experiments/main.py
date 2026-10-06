@@ -22,7 +22,15 @@ from experiments.util import (
     save_config,
     should_stop_training,
 )
-from model import VRNN, Basic, Lower_Model, Reg_Model, Upper_Model, VAE_Baseline_Model
+from model import (
+    Basic,
+    Inner_Reg_Model,
+    Lower_Model,
+    Reg_Model,
+    Upper_Model,
+    VAE_Baseline_Model,
+    VRNN,
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
@@ -32,6 +40,7 @@ MODEL_FACTORIES = (
     (lambda runtime: runtime.vrnn, VRNN),
     (lambda runtime: runtime.basic, Basic),
     (lambda runtime: runtime.upper, Upper_Model),
+    (lambda runtime: runtime.inner_kl, Inner_Reg_Model),
     (lambda runtime: runtime.lower, Lower_Model),
 )
 
@@ -433,8 +442,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--reverse", action="store_true", default=False)
     parser.add_argument("--vae-baseline", action="store_true", default=False)
-
     parser.add_argument("--grad_diagnostics", action="store_true", default=False)
+    parser.add_argument("--inner_kl", action="store_true", default=False)
     parser.add_argument("--lr_lambda", type=float, default=0.1)
 
     return parser.parse_args()

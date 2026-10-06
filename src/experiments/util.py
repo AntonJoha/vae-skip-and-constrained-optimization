@@ -97,6 +97,7 @@ class SeriesConfig(BaselineConfig):
     reverse: bool = False
     vae_baseline: bool = False
     grad_diagnostics: bool = False
+    inner_kl: bool = False
 
     lambda_min: float = 0.0
     lambda_max: float = 50
