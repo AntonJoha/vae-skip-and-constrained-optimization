@@ -13,9 +13,9 @@ TDLGMConfig = SeriesConfig
 
 
 class Model(KLBaseModel):
-    state_dropout = 0.0
-    layer_dropout = 0.0
-    logvar_clamp = None
+    state_dropout = 0.1
+    layer_dropout = 0.1
+    logvar_clamp = (-15.0, 2.0)
     combine_gaussian = False
     posterior_reduce = "mean"
     reverse_posterior_list = False
@@ -29,7 +29,7 @@ class Model(KLBaseModel):
         self.rho = self.config.rho
         self.rho_scaler = float(self.config.rho_scaler)
         self.reduction_threshold = self.config.reduction_threshold
-        self.lambda_ = torch.zeros(config.layers)
+        self.lambda_ = torch.zeros(config.layers, device=device)
 
         self.lambda_min = torch.zeros(config.layers)
         if config.lambda_min > 0:
@@ -39,16 +39,21 @@ class Model(KLBaseModel):
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
         self.old_violation = torch.full((config.layers,), torch.inf)
+        self.kl_warmup_epochs = max(1, int(getattr(self.config, "epochs", 1) * 0.1))
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-        self.kl_target = float(self.config.beta)
+        if self.kl_warmup_epochs == 1:
+            progress = 1.0
+        else:
+            progress = min(1.0, epoch / max(1, self.kl_warmup_epochs - 1))
+        self.kl_target = float(self.config.beta) * progress
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return layered_kl.new_full(
             layered_kl.shape,
-            float(self.kl_target),
+            float(self.kl_target) / max(1, layered_kl.numel()),
         )
 
     def outer_train_step(self, dataloader):
@@ -96,7 +101,9 @@ class Model(KLBaseModel):
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual, min=0.1, max=50
+            self.lambda_.to(residual.device) + self.rho * residual,
+            self.lambda_min,
+            self.lambda_max,
         )
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
