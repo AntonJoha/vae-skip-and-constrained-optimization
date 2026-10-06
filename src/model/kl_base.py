@@ -459,8 +459,6 @@ class KLBaseModel(nn.Module):
                 result[loss_name][group_name] = self._grad_norm(loss, parameters)
         return result
 
-
-
     def gradient_cosine_similarity(self, loss1, loss2):
 
         groups = self._parameter_groups()
@@ -469,7 +467,6 @@ class KLBaseModel(nn.Module):
             result[group_name] = self.__gradient_cosine(loss1, loss2, parameters)
         return result
 
-    
     def __gradient_cosine(self, loss1, loss2, parameters):
         parameters = [p for p in parameters if p.requires_grad]
         grads1 = torch.autograd.grad(
@@ -487,7 +484,7 @@ class KLBaseModel(nn.Module):
         dot_product = 0.0
         norm1 = 0.0
         norm2 = 0.0
-        for g1, g2 in zip(grads1, grads2):
+        for g1, g2 in zip(grads1, grads2, strict=False):
             if g1 is not None and g2 is not None:
                 dot_product += (g1 * g2).sum()
                 norm1 += (g1**2).sum()
@@ -495,4 +492,3 @@ class KLBaseModel(nn.Module):
         if norm1 == 0 or norm2 == 0:
             return 0.0
         return (dot_product / (torch.sqrt(norm1) * torch.sqrt(norm2))).item()
-

@@ -160,12 +160,11 @@ class Model(KLBaseModel):
 
         return float(loss.detach())
 
-
     def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
 
-
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-                x,y,prior=False)
+            x, y, prior=False
+        )
 
         rec, _ = self._compute_losses(
             y,
@@ -201,12 +200,10 @@ class Model(KLBaseModel):
             kl_constraint.item(),
         )
 
-
         cosine_similarity = self.gradient_cosine_similarity(rec, kl_constraint)
         log.info("Cosine reconstruction, kl_constraint:")
         for group_name, similarity in cosine_similarity.items():
             log.info("    %-20s %.6f", group_name, similarity)
-
 
         prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
         log.info(
@@ -216,9 +213,6 @@ class Model(KLBaseModel):
             prior_mean[0][0][0].item(),
             prior_logvar[0][0][0].item(),
         )
-
-
-
 
     def inner_parameters(self):
         return None

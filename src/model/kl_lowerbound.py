@@ -31,7 +31,10 @@ class Model(KLBaseModel):
         self.reduction_threshold = self.config.reduction_threshold
         self.lambda_ = torch.zeros(config.layers)
 
-        self.lambda_min = torch.zeros(config.layers) + config.lambda_min
+        self.lambda_min = torch.zeros(config.layers)
+        if config.lambda_min > 0:
+            self.lambda_min += config.lambda_min
+
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
@@ -155,13 +158,7 @@ class Model(KLBaseModel):
 
         return float(loss.detach())
 
-
-
-
-
     def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
-
-
 
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
@@ -186,8 +183,6 @@ class Model(KLBaseModel):
             for group_name, norm in groups.items():
                 log.info("    %-20s %.6e", group_name, norm)
 
-
-
         grad_info = self.gradient_diagnostics(
             {
                 "prior_kl": prior_kl,
@@ -199,10 +194,6 @@ class Model(KLBaseModel):
             log.info("  %s:", loss_name)
             for group_name, norm in groups.items():
                 log.info("    %-20s %.6e", group_name, norm)
-
-
-
-
 
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
@@ -242,7 +233,6 @@ class Model(KLBaseModel):
             al_pentaly.item(),
         )
 
-
         cosine_similarity = self.gradient_cosine_similarity(rec, al_pentaly)
 
         log.info(
@@ -258,14 +248,12 @@ class Model(KLBaseModel):
         for group_name, similarity in cosine_similarity.items():
             log.info("    %-20s %.6f", group_name, similarity)
 
-
         cosine_similarity = self.gradient_cosine_similarity(prior_kl, rec)
         log.info(
             "  Cosine prior_kl, reconstruction:",
         )
         for group_name, similarity in cosine_similarity.items():
             log.info("    %-20s %.6f", group_name, similarity)
-
 
         prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
         log.info(
@@ -275,7 +263,3 @@ class Model(KLBaseModel):
             prior_mean[0][0][0].item(),
             prior_logvar[0][0][0].item(),
         )
-
-
-       
-

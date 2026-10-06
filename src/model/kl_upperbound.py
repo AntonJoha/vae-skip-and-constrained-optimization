@@ -36,7 +36,7 @@ class Model(KLBaseModel):
 
         self.lambda_min = torch.zeros(config.layers)
         if config.lambda_min > 0:
-            self.lambda_min +=  config.lambda_min
+            self.lambda_min += config.lambda_min
 
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
         self.lambda_min = self.lambda_min.to(device)
@@ -136,7 +136,7 @@ class Model(KLBaseModel):
 
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
         residual = layered_kl - self._layer_target(layered_kl)
-        
+
         lambda_ = self.lambda_.to(residual.device)
         shifted = lambda_ + self.rho * residual
         al_penalty = (torch.clamp(shifted, min=0.0) ** 2 - lambda_**2) / (
@@ -205,4 +205,13 @@ class Model(KLBaseModel):
             logvar[0][0][0].item(),
             prior_mean[0][0][0].item(),
             prior_logvar[0][0][0].item(),
+        )
+
+    def middle_parameters(self):
+        return (
+            list(self.prior_state.parameters())
+            + list(self.prior_layers.parameters())
+            + list(self.to_output.parameters())
+            + list(self.posterior_state.parameters())
+            + list(self.posterior_layers.parameters())
         )
