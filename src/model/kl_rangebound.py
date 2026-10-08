@@ -111,6 +111,7 @@ class Model(KLBaseModel):
             * self.old_violation.to(constrain_violation.device)
         ).item():
             self.rho *= self.rho_scaler
+        self.old_violation = constrain_violation
         
         residual = residual_lower + residual_upper # should we sum them? or max?
         log.info(
@@ -301,7 +302,6 @@ class Model(KLBaseModel):
         layered_target = self._layer_target(layered_kl) 
         layered_target -= layered_target*self.spread
         return layered_target
-
 
 
 
