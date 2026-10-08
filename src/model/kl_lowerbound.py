@@ -113,8 +113,8 @@ class Model(KLBaseModel):
         self,
         x: torch.Tensor,
         y: torch.Tensor,
-        inner_optimizer,
         middle_optimizer: torch.optim.Optimizer,
+        inner_optimizer,
     ) -> float:
         self.train()
         inner_optimizer.zero_grad()

@@ -19,7 +19,7 @@ inner_tune:
 
 
 tune:
-	python -m experiments.main --verbose --tune --horizon $(horizon)
+	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics
 
 
 vae_baseline_reverse_tune:
@@ -110,4 +110,4 @@ eval_vae_reverse_no_gaussian:
 
 
 eval_bad:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochfinal_20261002-132105.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20261006-083117.pt
