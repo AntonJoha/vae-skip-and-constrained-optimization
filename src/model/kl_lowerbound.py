@@ -29,15 +29,12 @@ class Model(KLBaseModel):
         self.rho = self.config.rho
         self.rho_scaler = float(self.config.rho_scaler)
         self.reduction_threshold = self.config.reduction_threshold
-        self.lambda_ = torch.zeros(config.layers)
-
-        self.lambda_min = torch.zeros(config.layers)
-        if config.lambda_min > 0:
-            self.lambda_min += config.lambda_min
-
-        self.lambda_max = torch.zeros(config.layers) + config.lambda_max
-        self.lambda_min = self.lambda_min.to(device)
-        self.lambda_max = self.lambda_max.to(device)
+        lambda_min = max(float(config.lambda_min), 1e-3)
+        self.lambda_min = torch.full((config.layers,), lambda_min, device=device)
+        self.lambda_max = torch.full(
+            (config.layers,), float(config.lambda_max), device=device
+        )
+        self.lambda_ = self.lambda_min.clone()
         self.old_violation = torch.full((config.layers,), torch.inf)
 
     def set_epoch(self, epoch: int):
@@ -96,7 +93,9 @@ class Model(KLBaseModel):
             self.rho *= self.rho_scaler
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual, min=0.1, max=50
+            self.lambda_.to(residual.device) + self.rho * residual,
+            self.lambda_min.to(residual.device),
+            self.lambda_max.to(residual.device),
         )
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
