@@ -17,6 +17,8 @@ inner_tune:
 
 
 
+tune_range:
+	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics --range_bound
 
 tune:
 	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics
