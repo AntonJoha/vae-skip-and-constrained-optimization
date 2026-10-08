@@ -129,12 +129,13 @@ class Model(KLBaseModel):
         self,
         x: torch.Tensor,
         y: torch.Tensor,
-        middle_optimizer: torch.optim.Optimizer,
-        _inner_optimizer = None,
+        middle_optimizer: torch.optim.Optimizer | None,
+        inner_optimizer: torch.optim.Optimizer | None = None,
     ) -> float:
         self.train()
 
-        middle_optimizer.zero_grad()
+        optimizer = inner_optimizer if inner_optimizer is not None else middle_optimizer
+        optimizer.zero_grad(set_to_none=True)
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
         )
@@ -170,9 +171,15 @@ class Model(KLBaseModel):
         loss = rec + al_penalty.sum()
 
         loss.backward()
-        middle_optimizer.step()
+        optimizer.step()
 
         return float(loss.detach())
+
+    def inner_parameters(self):
+        return list(self.parameters())
+
+    def middle_parameters(self):
+        return None
 
     def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
 
@@ -301,8 +308,6 @@ class Model(KLBaseModel):
         layered_target = self._layer_target(layered_kl) 
         layered_target -= layered_target*self.spread
         return layered_target
-
-
 
 
 
