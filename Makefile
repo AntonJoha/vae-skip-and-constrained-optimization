@@ -19,7 +19,7 @@ inner_tune:
 
 
 tune:
-	python -m experiments.main --verbose --tune --horizon $(horizon)
+	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics --scrabbled_y
 
 
 vae_baseline_reverse_tune:

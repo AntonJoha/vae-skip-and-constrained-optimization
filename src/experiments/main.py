@@ -84,6 +84,25 @@ def evaluate_posterior(model, loader: DataLoader) -> float:
 
 
 @torch.no_grad()
+def evaluate_scrabbled(model, loader: DataLoader) -> float:
+    model.eval()
+    losses = []
+    for batch in loader:
+        x, y = unpack_batch(batch)
+        y = y[torch.randperm(y.size(0))]  # Scramble the target values
+        t_recon_loss_q, _ = model.compute_losses(
+            x,
+            y,
+            prior=False,
+        )
+        losses.append(t_recon_loss_q)
+    model.train()
+    return sum(losses) / max(1, len(losses))
+
+
+
+
+@torch.no_grad()
 def evaluate_kl(model, loader: DataLoader) -> float:
     model.eval()
     kl_losses = None
@@ -195,6 +214,9 @@ def train_model(
     model.train()
     for epoch in range(train_epochs):
         log.info("Starting epoch %03d/%03d", epoch + 1, train_epochs)
+        
+        # training portion
+
         epoch_losses = []
         model.set_epoch(epoch)
 
@@ -207,6 +229,9 @@ def train_model(
         model.outer_train_step(train_loader)
 
         val_loss = evaluate(model, val_loader)
+
+        # logging portion
+
         if runtime.verbose:
             mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
             val_posterior = evaluate_posterior(model, val_loader)
@@ -241,7 +266,17 @@ def train_model(
                         break
 
                 model.print_gradients(x_t, y_t)
+            if runtime.scrabbled_y:
+                scrabbled_val_loss = evaluate_scrabbled(model, val_loader)
+                scrabbled_train_loss = evaluate_scrabbled(model, train_loader)
+                log.info(
+                    " Scrabbled NLL on train: %.5f, Scrabbled NLL on val: %.5f",
+                    scrabbled_train_loss,
+                    scrabbled_val_loss,
+                )
 
+
+                
         if scheduler_middle is not None:
             scheduler_middle.step(val_loss)
         if scheduler_inner is not None:
@@ -445,6 +480,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grad_diagnostics", action="store_true", default=False)
     parser.add_argument("--inner_kl", action="store_true", default=False)
     parser.add_argument("--lr_lambda", type=float, default=0.1)
+    parser.add_argument("--scrabbled_y", action="store_true", default=False)
 
     return parser.parse_args()
 

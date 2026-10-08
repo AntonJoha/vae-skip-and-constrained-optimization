@@ -163,7 +163,7 @@ class Model(KLBaseModel):
             y,
             mean,
             logvar,
-            prior_list=[t.detach() for t in prior_list],
+            prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
 
@@ -179,7 +179,7 @@ class Model(KLBaseModel):
         grad_info = self.gradient_diagnostics(
             {
                 "reconstruction": rec,
-                "kl_constraint": al_penalty,
+                "al_penalty": al_penalty,
             }
         )
 
