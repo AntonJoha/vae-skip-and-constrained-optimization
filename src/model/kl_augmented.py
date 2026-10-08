@@ -100,6 +100,8 @@ class Model(KLBaseModel):
             self.lambda_max,
         )
 
+
+        """
         for i in range(len(self.lambda_)):
             if abs(self.lambda_[i]) < self.config.lambda_min:
                 self.lambda_[i] = (
@@ -107,7 +109,7 @@ class Model(KLBaseModel):
                     if residual[i].mean() < 0
                     else self.config.lambda_min
                 )
-
+        """
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
