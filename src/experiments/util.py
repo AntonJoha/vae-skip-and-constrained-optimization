@@ -99,6 +99,7 @@ class SeriesConfig(BaselineConfig):
     grad_diagnostics: bool = False
     scrabbled_y: bool = False
     inner_kl: bool = False
+    range_bound: bool = False
 
     lambda_min: float = 0.0
     lambda_max: float = 50

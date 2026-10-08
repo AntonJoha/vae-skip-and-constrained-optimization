@@ -29,13 +29,19 @@ class Model(KLBaseModel):
         self.rho = self.config.rho
         self.rho_scaler = float(self.config.rho_scaler)
         self.reduction_threshold = self.config.reduction_threshold
-        lambda_min = max(float(config.lambda_min), 1e-3)
-        self.lambda_min = torch.full((config.layers,), lambda_min, device=device)
-        self.lambda_max = torch.full(
-            (config.layers,), float(config.lambda_max), device=device
-        )
-        self.lambda_ = self.lambda_min.clone()
+        self.lambda_lower = torch.zeros(config.layers)
+        self.lambda_upper = torch.zeros(config.layers)
+
+        self.lambda_min = torch.zeros(config.layers)
+        if config.lambda_min > 0:
+            self.lambda_min += config.lambda_min
+
+        self.lambda_max = torch.zeros(config.layers) + config.lambda_max
+        self.lambda_min = self.lambda_min.to(device)
+        self.lambda_max = self.lambda_max.to(device)
         self.old_violation = torch.full((config.layers,), torch.inf)
+
+        self.spread = 0.2
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -83,25 +89,36 @@ class Model(KLBaseModel):
         latent_mean_diff /= len(dataloader)
         latent_logvar_diff /= len(dataloader)
 
-        residual = self._layer_target(expected_kl) - expected_kl
-        constrain_violation = torch.clamp(residual, min=0.0)
+        residual_lower = self._lower_layer_target(expected_kl) - expected_kl
+        constrain_violation_lower = torch.clamp(residual_lower, min=0.0)
+        
+
+        self.lambda_lower = torch.clamp(
+                self.lambda_lower.to(residual_lower.device) + self.rho * residual_lower, min=0, max=50
+        )
+
+        residual_upper = expected_kl - self._upper_layer_target(expected_kl)
+        constrain_violation_upper = torch.clamp(residual_upper, min=0.0)
+        self.lambda_upper = torch.clamp(
+                self.lambda_upper.to(residual_upper.device) + self.rho * residual_upper, min=0, max=50
+        )
+        
+        constrain_violation = torch.max(constrain_violation_lower, constrain_violation_upper) # max violation??? Or should we sum them?
+
         if torch.any(
             constrain_violation
             > self.reduction_threshold
             * self.old_violation.to(constrain_violation.device)
         ).item():
             self.rho *= self.rho_scaler
-        self.old_violation = constrain_violation
-        self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual,
-            self.lambda_min.to(residual.device),
-            self.lambda_max.to(residual.device),
-        )
+        
+        residual = residual_lower + residual_upper # should we sum them? or max?
         log.info(
-            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
+            "Outer step: expected KL=%.4f, residual=%.4f, lambda lower =%s, lambda upper =%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
             residual.mean().item(),
-            self.lambda_.cpu().numpy().tolist(),
+            self.lambda_lower.cpu().numpy().tolist(),
+            self.lambda_upper.cpu().numpy().tolist(),
             self.rho,
             expected_wasserstein.mean().item(),
             latent_mean_diff.mean().item(),
@@ -113,23 +130,9 @@ class Model(KLBaseModel):
         x: torch.Tensor,
         y: torch.Tensor,
         middle_optimizer: torch.optim.Optimizer,
-        inner_optimizer,
+        _inner_optimizer = None,
     ) -> float:
         self.train()
-        inner_optimizer.zero_grad()
-
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
-        )
-        _, prior_kl = self._compute_losses(
-            y,
-            mean,
-            logvar,
-            prior_list=prior_list,
-            combined_posterior_list=[t.detach() for t in combined_posterior_list],
-        )
-        prior_kl.backward()
-        inner_optimizer.step()
 
         middle_optimizer.zero_grad()
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
@@ -139,17 +142,31 @@ class Model(KLBaseModel):
             y,
             mean,
             logvar,
-            prior_list=[t.detach() for t in prior_list],
+            prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
 
+
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        residual = self._layer_target(layered_kl) - layered_kl
-        lambda_ = self.lambda_.to(residual.device)
-        shifted = lambda_ + self.rho * residual
-        al_penalty = (torch.clamp(shifted, min=0.0) ** 2 - lambda_**2) / (
+        residual_lower= self._lower_layer_target(layered_kl) - layered_kl
+
+        lambda_lower = self.lambda_lower.to(residual_lower.device)
+        shifted = lambda_lower + self.rho * residual_lower
+        al_penalty_lower = (torch.clamp(shifted, min=0.0) ** 2 - lambda_lower**2) / (
             2.0 * self.rho
         )
+
+        residual_upper= layered_kl - self._upper_layer_target(layered_kl)
+        lambda_upper = self.lambda_upper.to(residual_upper.device)
+        shifted_upper = lambda_upper + self.rho * residual_upper
+        al_penalty_upper = (torch.clamp(shifted_upper, min=0.0) ** 2 - lambda_upper**2) / (
+            2.0 * self.rho
+        )
+
+
+        al_penalty = al_penalty_lower.sum() + al_penalty_upper.sum()
+
+
         loss = rec + al_penalty.sum()
 
         loss.backward()
@@ -205,19 +222,31 @@ class Model(KLBaseModel):
             combined_posterior_list=combined_posterior_list,
         )
 
+
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        residual = self._layer_target(layered_kl) - layered_kl
-        lambda_ = self.lambda_.to(residual.device)
-        shifted = lambda_ + self.rho * residual
-        al_penalty = (torch.clamp(shifted, min=0.0) ** 2 - lambda_**2) / (
+        residual_lower= self._lower_layer_target(layered_kl) - layered_kl
+
+        lambda_lower = self.lambda_lower.to(residual_lower.device)
+        shifted = lambda_lower + self.rho * residual_lower
+        al_penalty_lower = (torch.clamp(shifted, min=0.0) ** 2 - lambda_lower**2) / (
             2.0 * self.rho
         )
-        al_pentaly = al_penalty.sum()
+
+        residual_upper= layered_kl - self._upper_layer_target(layered_kl)
+        lambda_upper = self.lambda_upper.to(residual_upper.device)
+        shifted_upper = lambda_upper + self.rho * residual_upper
+        al_penalty_upper = (torch.clamp(shifted_upper, min=0.0) ** 2 - lambda_upper**2) / (
+            2.0 * self.rho
+        )
+
+
+        al_penalty = al_penalty_lower.sum() + al_penalty_upper.sum()
+
 
         grad_info = self.gradient_diagnostics(
             {
                 "reconstruction": rec,
-                "al_pentaly": al_pentaly,
+                "al_penalty": al_penalty,
             }
         )
 
@@ -229,10 +258,10 @@ class Model(KLBaseModel):
         log.info(
             "  reconstruction=%.6f kl_constraint=%.6f",
             rec.item(),
-            al_pentaly.item(),
+            al_penalty.item(),
         )
 
-        cosine_similarity = self.gradient_cosine_similarity(rec, al_pentaly)
+        cosine_similarity = self.gradient_cosine_similarity(rec, al_penalty)
 
         log.info(
             "  Cosine reconstruction, al_penalty:",
@@ -240,7 +269,7 @@ class Model(KLBaseModel):
         for group_name, similarity in cosine_similarity.items():
             log.info("    %-20s %.6f", group_name, similarity)
 
-        cosine_similarity = self.gradient_cosine_similarity(prior_kl, al_pentaly)
+        cosine_similarity = self.gradient_cosine_similarity(prior_kl, al_penalty)
         log.info(
             "  Cosine prior_kl, al_penalty:",
         )
@@ -262,3 +291,31 @@ class Model(KLBaseModel):
             prior_mean[0][0][0].item(),
             prior_logvar[0][0][0].item(),
         )
+
+    def _upper_layer_target(self, layered_kl):
+        layered_target = self._layer_target(layered_kl) 
+        layered_target += layered_target*self.spread
+        return layered_target
+
+    def _lower_layer_target(self, layered_kl):
+        layered_target = self._layer_target(layered_kl) 
+        layered_target -= layered_target*self.spread
+        return layered_target
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
