@@ -362,7 +362,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             base_runtime,
             hidden_dim=trial.suggest_categorical(
                 "hidden_dim",
-                [32, 64, 128, 256, 512],
+                [32, 64, 128]
             ),
             layers=trial.suggest_int(
                 "layers",
