@@ -21,7 +21,7 @@ tune_range:
 	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics --range_bound
 
 tune:
-	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics
+	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics --scrabbled_y
 
 
 vae_baseline_reverse_tune:
