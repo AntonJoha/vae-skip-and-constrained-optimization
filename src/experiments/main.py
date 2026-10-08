@@ -30,6 +30,7 @@ from model import (
     Upper_Model,
     VAE_Baseline_Model,
     VRNN,
+    RangeBound_Model,
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -42,6 +43,7 @@ MODEL_FACTORIES = (
     (lambda runtime: runtime.upper, Upper_Model),
     (lambda runtime: runtime.inner_kl, Inner_Reg_Model),
     (lambda runtime: runtime.lower, Lower_Model),
+    (lambda runtime: runtime.range_bound, RangeBound_Model),
 )
 
 
@@ -481,6 +483,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--inner_kl", action="store_true", default=False)
     parser.add_argument("--lr_lambda", type=float, default=0.1)
     parser.add_argument("--scrabbled_y", action="store_true", default=False)
+    parser.add_argument("--range_bound", action="store_true", default=False)
 
     return parser.parse_args()
 
