@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-from .kl_base import KLBaseModel 
+from .kl_base import KLBaseModel
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,11 @@ class Model(KLBaseModel):
         return
 
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer, _inner_optimier
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        optimizer: torch.optim.Optimizer,
+        _inner_optimier,
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)
@@ -69,6 +73,38 @@ class Model(KLBaseModel):
         }
 
         return float(loss.detach())
+
+
+    def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
+        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
+            x, y, prior=False
+        )
+        rec, kl_loss = self._compute_losses(
+            y,
+            mean,
+            logvar,
+            prior_list=prior_list,
+            combined_posterior_list=combined_posterior_list,
+        )
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "reconstruction": rec,
+                "kl_loss": kl_loss,
+            }
+        )
+
+        log.info("Scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+        log.info("  reconstruction=%.6f kl_loss=%.6f", rec.item(), kl_loss.item())
+
+        cosine_similarity = self.gradient_cosine_similarity(rec, kl_loss)
+        log.info("Cosine reconstruction, kl_loss:")
+        for group_name, similarity in cosine_similarity.items():
+            log.info("    %-20s %.6f", group_name, similarity)
 
 
     def inner_parameters(self):
