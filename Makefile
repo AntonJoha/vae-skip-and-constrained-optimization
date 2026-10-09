@@ -18,7 +18,7 @@ inner_tune:
 
 
 tune_range:
-	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics --range_bound
+	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics --range_bound --scrabbled_y
 
 tune:
 	python -m experiments.main --verbose --tune --horizon $(horizon) --grad_diagnostics --scrabbled_y
@@ -36,14 +36,14 @@ tune_reverse:
 	python -m experiments.main --verbose --tune --horizon $(horizon) --reverse
 
 upper_tune:
-	python -m experiments.main --verbose --tune --upper --horizon $(horizon) --grad_diagnostics
+	python -m experiments.main --verbose --tune --upper --horizon $(horizon) --grad_diagnostics --scrabbled_y
 
 upper_tune_reverse:
 	python -m experiments.main --verbose --tune --upper --horizon $(horizon) --reverse
 
 
 lower_tune:
-	python -m experiments.main --verbose --tune --lower --horizon $(horizon) --grad_diagnostics
+	python -m experiments.main --verbose --tune --lower --horizon $(horizon) --grad_diagnostics --scrabbled_y
 
 
 vrnn:

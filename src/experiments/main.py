@@ -193,7 +193,7 @@ def train_model(
 
     train_epochs = runtime.epochs if epochs is None else epochs
     checkpoint_interval = max(1, runtime.checkpoint_interval)
-    early_stopping_patience = 20
+    early_stopping_patience = 50
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
     before = evaluate(model, val_loader)
