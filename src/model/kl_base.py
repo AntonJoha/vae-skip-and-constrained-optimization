@@ -344,6 +344,22 @@ class KLBaseModel(nn.Module):
         return recon_loss, kl_loss
 
     @torch.no_grad()
+    def compute_scrambled_losses(
+            self, x: torch.Tensor, y: torch.Tensor, y_random: torch.Tensor, prior: bool = False
+    ) -> tuple[float, float]:
+        pred_mean, pred_logvar, prior_list, combined_posterior_list = self._latent_pass(
+            x, y_random, prior=prior
+        )
+        rec, kl = self._compute_losses(
+            y,
+            pred_mean,
+            pred_logvar,
+            prior_list=prior_list,
+            combined_posterior_list=combined_posterior_list,
+        )
+        return float(rec), float(kl)
+
+    @torch.no_grad()
     def compute_losses(
         self, x: torch.Tensor, y: torch.Tensor, prior: bool = True
     ) -> tuple[float, float]:

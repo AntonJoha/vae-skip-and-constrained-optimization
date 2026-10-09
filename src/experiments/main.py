@@ -91,10 +91,11 @@ def evaluate_scrabbled(model, loader: DataLoader) -> float:
     losses = []
     for batch in loader:
         x, y = unpack_batch(batch)
-        y = y[torch.randperm(y.size(0))]  # Scramble the target values
-        t_recon_loss_q, _ = model.compute_losses(
+        y_random = y[torch.randperm(y.size(0))]  # Scramble the target values
+        t_recon_loss_q, _ = model.compute_scrambled_losses(
             x,
             y,
+            y_random,
             prior=False,
         )
         losses.append(t_recon_loss_q)

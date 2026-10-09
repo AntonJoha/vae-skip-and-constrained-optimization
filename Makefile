@@ -112,4 +112,4 @@ eval_vae_reverse_no_gaussian:
 
 
 eval_bad:
-	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20261006-083117.pt
+	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochfinal_20261009-123544.pt
