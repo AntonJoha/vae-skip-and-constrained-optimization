@@ -389,8 +389,8 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             ),
             rho=trial.suggest_float(
                 "rho",
-                1e1,
-                5e1,
+                1,
+                5,
                 log=True,
             ),
             reduction_threshold=trial.suggest_float(
