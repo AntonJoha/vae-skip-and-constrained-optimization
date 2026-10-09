@@ -29,8 +29,8 @@ class Model(KLBaseModel):
         self.rho = self.config.rho
         self.rho_scaler = float(self.config.rho_scaler)
         self.reduction_threshold = self.config.reduction_threshold
-        self.lambda_lower = torch.zeros(config.layers)
-        self.lambda_upper = torch.zeros(config.layers)
+        self.lambda_lower = torch.zeros(config.layers).to(device)
+        self.lambda_upper = torch.zeros(config.layers).to(device)
 
         self.lambda_min = torch.zeros(config.layers)
         if config.lambda_min > 0:
@@ -150,9 +150,8 @@ class Model(KLBaseModel):
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
         residual_lower= self._lower_layer_target(layered_kl) - layered_kl
 
-        lambda_lower = self.lambda_lower.to(residual_lower.device)
-        shifted = lambda_lower + self.rho * residual_lower
-        al_penalty_lower = (torch.clamp(shifted, min=0.0) ** 2 - lambda_lower**2) / (
+        shifted = self.lambda_lower + self.rho * residual_lower
+        al_penalty_lower = (torch.clamp(shifted, min=0.0) ** 2 - self.lambda_lower**2) / (
             2.0 * self.rho
         )
 
