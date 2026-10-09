@@ -30,7 +30,7 @@ vae_baseline_reverse_tune:
 
 
 vae_baseline_tune:
-	python -m experiments.main --verbose --tune --horizon $(horizon) --vae-baseline
+	python -m experiments.main --verbose --tune --horizon $(horizon) --vae-baseline --scrabbled_y --grad_diagnostics
 
 tune_reverse:
 	python -m experiments.main --verbose --tune --horizon $(horizon) --reverse

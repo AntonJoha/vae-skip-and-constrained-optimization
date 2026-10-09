@@ -42,6 +42,7 @@ class Model(KLBaseModel):
         self.old_violation = torch.full((config.layers,), torch.inf)
 
         self.spread = 0.2
+        log.info("RHO: %f, scaler: %f", self.rho, self.rho_scaler)
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -110,7 +111,9 @@ class Model(KLBaseModel):
             > self.reduction_threshold
             * self.old_violation.to(constrain_violation.device)
         ).item():
+            log.info("Old rho %f", self.rho)
             self.rho *= self.rho_scaler
+            log.info("New rho %f", self.rho)
         
         residual = residual_lower + residual_upper # should we sum them? or max?
         log.info(
