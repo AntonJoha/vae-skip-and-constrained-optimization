@@ -2,12 +2,21 @@ import logging
 
 import torch
 
-from .kl_reg import Model as RegModel
+from .kl_base import KLBaseModel 
 
 log = logging.getLogger(__name__)
 
 
-class Model(RegModel):
+class Model(KLBaseModel):
+
+    state_dropout = 0.0
+    layer_dropout = 0.0
+    logvar_clamp = None
+    combine_gaussian = False
+    posterior_reduce = "mean"
+    reverse_posterior_list = False
+
+
     def __init__(self, config):
         super().__init__(config)
         self.beta = float(self.config.beta)
@@ -28,8 +37,11 @@ class Model(RegModel):
             self.kl_weight,
         )
 
+    def outer_train_step(self, dataloader):
+        return
+
     def train_step(
-        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer
+        self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer, _inner_optimier
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)
@@ -57,3 +69,10 @@ class Model(RegModel):
         }
 
         return float(loss.detach())
+
+
+    def inner_parameters(self):
+        return None
+
+    def middle_parameters(self):
+        return list(self.parameters())

@@ -438,12 +438,12 @@ class KLBaseModel(nn.Module):
         squared_norm = np.float64(squared_norm)
         return (np.sqrt(squared_norm) / num_weights**0.5).item()
 
-    def inner_parameters(self):
+    def inner_parameters(self) -> list[torch.nn.Parameter]| None:
         return list(self.prior_state.parameters()) + list(
             self.prior_layers.parameters()
         )
 
-    def middle_parameters(self):
+    def middle_parameters(self) -> list[torch.nn.Parameter] | None:
         return (
             list(self.posterior_state.parameters())
             + list(self.posterior_layers.parameters())
