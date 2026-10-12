@@ -178,7 +178,7 @@ def train_model(
     scheduler_inner = None
     if inner_optimizer is not None:
         scheduler_inner = LambdaLR(
-            inner_optimizer, lr_lambda=lambda epoch: 1.0 / (epoch + 2)
+            inner_optimizer, lr_lambda=lambda epoch: 0.5 / (epoch + 2)
         )
 
     scheduler_middle = None
