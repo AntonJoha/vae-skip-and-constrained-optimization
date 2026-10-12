@@ -153,6 +153,7 @@ class KLBaseModel(nn.Module):
         self.last_train_metrics = None
         self.lambda_ = 0.0
         self.lambda_lr = float(getattr(config, "lr_lambda", 1e-3))
+        self.rho_lr = float(getattr(config, "rho_lr", 1e-4))
         self.kl_target = float(config.beta)
         self.kl_penalty = 1.0
         self.rho = float(getattr(config, "rho", 1.0))

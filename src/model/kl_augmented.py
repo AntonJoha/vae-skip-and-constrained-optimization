@@ -25,6 +25,8 @@ class Model(KLBaseModel):
         super().__init__(config)
         self.last_train_metrics = None
         self.kl_target = float(self.config.beta)
+        self.lambda_lr = float(getattr(config, "lr_lambda", self.lambda_lr))
+        self.rho_lr = float(getattr(config, "rho_lr", self.rho_lr))
         self.lambda_ = torch.zeros(config.layers).to(device)
         self.old_violation = torch.full((config.layers,), torch.inf)
 
@@ -90,12 +92,15 @@ class Model(KLBaseModel):
             > self.reduction_threshold
             * self.old_violation.to(constrain_violation.device)
         ).item():
-            self.rho *= self.rho_scaler
+            self.rho = max(
+                1e-8,
+                self.rho + self.rho_lr * float(constrain_violation.mean().item()),
+            )
 
         self.old_violation = constrain_violation
 
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual,
+            self.lambda_.to(residual.device) + self.lambda_lr * residual,
             self.lambda_min,
             self.lambda_max,
         )
