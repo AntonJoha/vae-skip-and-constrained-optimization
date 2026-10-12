@@ -9,6 +9,7 @@ import optuna
 import torch
 from optuna.exceptions import TrialPruned
 from torch import nn
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
 from data.data import make_dataloaders
@@ -129,12 +130,7 @@ def train_model(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=runtime.learning_rate)
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode="min",
-        factor=0.1,
-        patience=5,
-    )
+    scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0 / (epoch + 2))
 
     train_epochs = runtime.epochs if epochs is None else epochs
     checkpoint_interval = max(1, runtime.checkpoint_interval)
@@ -183,7 +179,7 @@ def train_model(
         else:
             epochs_without_improvement += 1
 
-        scheduler.step(val_loss)
+        scheduler.step()
         if trial is not None:
             trial.report(val_loss, epoch)
             if trial.should_prune():
