@@ -477,6 +477,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--beta", type=float, default=1)
     parser.add_argument("--rho", type=float, default=2.0)
+    parser.add_argument(
+        "--dual_update_interval",
+        type=int,
+        default=5,
+        help="Update lambda and rho every N epochs.",
+    )
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--reverse", action="store_true", default=False)
     parser.add_argument("--vae-baseline", action="store_true", default=False)

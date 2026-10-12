@@ -48,6 +48,9 @@ class Model(KLBaseModel):
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def outer_train_step(self, dataloader):
+        if not self._should_update_duals():
+            return
+
         expected_kl = None
         expected_wasserstein = None
         latent_mean_diff = None
@@ -95,7 +98,7 @@ class Model(KLBaseModel):
         self.old_violation = constrain_violation
 
         self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.rho * residual,
+            self.lambda_.to(residual.device) + self.lambda_lr * residual,
             self.lambda_min,
             self.lambda_max,
         )

@@ -56,6 +56,9 @@ class Model(KLBaseModel):
         )
 
     def outer_train_step(self, dataloader):
+        if not self._should_update_duals():
+            return
+
         expected_kl = None
         expected_wasserstein = None
         latent_mean_diff = None
@@ -95,13 +98,13 @@ class Model(KLBaseModel):
         
 
         self.lambda_lower = torch.clamp(
-                self.lambda_lower.to(residual_lower.device) + self.rho * residual_lower, min=0, max=50
+                self.lambda_lower.to(residual_lower.device) + self.lambda_lr * residual_lower, min=0, max=50
         )
 
         residual_upper = expected_kl - self._upper_layer_target(expected_kl)
         constrain_violation_upper = torch.clamp(residual_upper, min=0.0)
         self.lambda_upper = torch.clamp(
-                self.lambda_upper.to(residual_upper.device) + self.rho * residual_upper, min=0, max=50
+                self.lambda_upper.to(residual_upper.device) + self.lambda_lr * residual_upper, min=0, max=50
         )
         
         constrain_violation = torch.max(constrain_violation_lower, constrain_violation_upper) # max violation??? Or should we sum them?
@@ -309,7 +312,6 @@ class Model(KLBaseModel):
         layered_target = self._layer_target(layered_kl) 
         layered_target -= layered_target*self.spread
         return layered_target
-
 
 
 

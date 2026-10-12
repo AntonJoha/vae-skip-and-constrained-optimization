@@ -69,6 +69,7 @@ class SeriesConfig(BaselineConfig):
     batch_size: int = 32
     learning_rate: float = 1e-3
     lr_lambda: float = 0.1
+    dual_update_interval: int = 5
     rho: float = 2.0
 
     beta: float = 0.565
