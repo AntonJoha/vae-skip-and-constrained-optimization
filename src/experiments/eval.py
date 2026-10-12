@@ -20,6 +20,7 @@ from model import (
     Reg_Model,
     Upper_Model,
     VAE_Baseline_Model,
+    RangeBound_Model,
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -389,6 +390,8 @@ def benchmark_model(args, model_path: Path) -> None:
             model = Inner_Reg_Model(model_config).to(device)
         elif runtime.lower:
             model = Lower_Model(model_config).to(device)
+        elif runtime.range_bound:
+            model = RangeBound_Model(model_config).to(device)
         else:
             model = Reg_Model(model_config).to(device)
 
