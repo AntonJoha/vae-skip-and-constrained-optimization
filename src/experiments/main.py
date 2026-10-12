@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from optuna.exceptions import TrialPruned
 from torch.optim import Adam
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
 from data.data import make_dataloaders
@@ -176,20 +177,14 @@ def train_model(
 
     scheduler_inner = None
     if inner_optimizer is not None:
-        scheduler_inner = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            inner_optimizer,
-            mode="min",
-            factor=0.2,
-            patience=10,
+        scheduler_inner = LambdaLR(
+            inner_optimizer, lr_lambda=lambda epoch: 0.5 / (epoch + 2)
         )
 
     scheduler_middle = None
     if middle_optimizer is not None:
-        scheduler_middle = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            middle_optimizer,
-            mode="min",
-            factor=0.1,
-            patience=10,
+        scheduler_middle = LambdaLR(
+            middle_optimizer, lr_lambda=lambda epoch: 1.0 / (epoch + 2)
         )
 
     train_epochs = runtime.epochs if epochs is None else epochs
@@ -281,9 +276,9 @@ def train_model(
 
                 
         if scheduler_middle is not None:
-            scheduler_middle.step(val_loss)
+            scheduler_middle.step()
         if scheduler_inner is not None:
-            scheduler_inner.step(val_loss)
+            scheduler_inner.step()
 
         if reason := should_stop_training(before, val_loss):
             log.warning(
