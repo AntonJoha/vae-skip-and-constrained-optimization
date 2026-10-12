@@ -23,7 +23,8 @@ class Model(KLBaseModel):
     def __init__(self, config):
         super().__init__(config)
         self.lambda_ = 0.0
-        self.lambda_lr = 1e-4
+        self.lambda_lr = float(getattr(config, "lr_lambda", self.lambda_lr))
+        self.rho_lr = float(getattr(config, "rho_lr", self.rho_lr))
         self.kl_penalty = 1.0
         self.kl_target = 0.5
         self.rho = self.config.rho
@@ -56,9 +57,6 @@ class Model(KLBaseModel):
         )
 
     def outer_train_step(self, dataloader):
-        if not self._should_update_duals():
-            return
-
         expected_kl = None
         expected_wasserstein = None
         latent_mean_diff = None
@@ -115,7 +113,10 @@ class Model(KLBaseModel):
             * self.old_violation.to(constrain_violation.device)
         ).item():
             log.info("Old rho %f", self.rho)
-            self.rho *= self.rho_scaler
+            self.rho = max(
+                1e-8,
+                self.rho + self.rho_lr * float(constrain_violation.mean().item()),
+            )
             log.info("New rho %f", self.rho)
         
         residual = residual_lower + residual_upper # should we sum them? or max?
@@ -312,7 +313,6 @@ class Model(KLBaseModel):
         layered_target = self._layer_target(layered_kl) 
         layered_target -= layered_target*self.spread
         return layered_target
-
 
 
 

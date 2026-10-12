@@ -24,7 +24,8 @@ class Model(KLBaseModel):
     def __init__(self, config):
         super().__init__(config)
         self.lambda_ = 0.0
-        self.lambda_lr = 1e-3
+        self.lambda_lr = float(getattr(config, "lr_lambda", self.lambda_lr))
+        self.rho_lr = float(getattr(config, "rho_lr", self.rho_lr))
         self.kl_penalty = 1.0
         self.kl_target = 0.5
         self.epoch = 1
@@ -55,9 +56,6 @@ class Model(KLBaseModel):
         )
 
     def outer_train_step(self, dataloader):
-        if not self._should_update_duals():
-            return
-
         expected_kl = None
         expected_wasserstein = None
         latent_mean_diff = None
@@ -99,7 +97,10 @@ class Model(KLBaseModel):
             > self.reduction_threshold
             * self.old_violation.to(constrain_violation.device)
         ).item():
-            self.rho *= self.rho_scaler
+            self.rho = max(
+                1e-8,
+                self.rho + self.rho_lr * float(constrain_violation.mean().item()),
+            )
         self.old_violation = constrain_violation
         self.lambda_ = torch.clamp(
             self.lambda_.to(residual.device) + self.lambda_lr * residual,

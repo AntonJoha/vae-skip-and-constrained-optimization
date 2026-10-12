@@ -388,6 +388,12 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-1,
                 log=True,
             ),
+            rho_lr=trial.suggest_float(
+                "rho_lr",
+                1e-6,
+                1e-2,
+                log=True,
+            ),
             rho=trial.suggest_float(
                 "rho",
                 1,
@@ -477,18 +483,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--beta", type=float, default=1)
     parser.add_argument("--rho", type=float, default=2.0)
-    parser.add_argument(
-        "--dual_update_interval",
-        type=int,
-        default=5,
-        help="Update lambda and rho every N epochs.",
-    )
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--reverse", action="store_true", default=False)
     parser.add_argument("--vae-baseline", action="store_true", default=False)
     parser.add_argument("--grad_diagnostics", action="store_true", default=False)
     parser.add_argument("--inner_kl", action="store_true", default=False)
-    parser.add_argument("--lr_lambda", type=float, default=0.1)
+    parser.add_argument("--lr_lambda", type=float, default=1e-3)
+    parser.add_argument("--rho_lr", type=float, default=1e-4)
     parser.add_argument("--scrabbled_y", action="store_true", default=False)
     parser.add_argument("--range_bound", action="store_true", default=False)
 

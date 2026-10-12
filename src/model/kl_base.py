@@ -153,9 +153,7 @@ class KLBaseModel(nn.Module):
         self.last_train_metrics = None
         self.lambda_ = 0.0
         self.lambda_lr = float(getattr(config, "lr_lambda", 1e-3))
-        self.dual_update_interval = max(
-            1, int(getattr(config, "dual_update_interval", 5))
-        )
+        self.rho_lr = float(getattr(config, "rho_lr", 1e-4))
         self.kl_target = float(config.beta)
         self.kl_penalty = 1.0
         self.rho = float(getattr(config, "rho", 1.0))
@@ -189,9 +187,6 @@ class KLBaseModel(nn.Module):
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-
-    def _should_update_duals(self) -> bool:
-        return (self.epoch + 1) % self.dual_update_interval == 0
 
     def _to_output_shape(self, x: torch.Tensor) -> torch.Tensor:
         x = x.view(x.size(0), self.config.horizon, self.config.output_dim)
