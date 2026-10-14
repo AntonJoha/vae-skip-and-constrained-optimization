@@ -105,7 +105,6 @@ class Model(KLBaseModel):
             self.lambda_max,
         )
 
-
         """
         for i in range(len(self.lambda_)):
             if abs(self.lambda_[i]) < self.config.lambda_min:

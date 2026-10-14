@@ -346,7 +346,11 @@ class KLBaseModel(nn.Module):
 
     @torch.no_grad()
     def compute_scrambled_losses(
-            self, x: torch.Tensor, y: torch.Tensor, y_random: torch.Tensor, prior: bool = False
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        y_random: torch.Tensor,
+        prior: bool = False,
     ) -> tuple[float, float]:
         pred_mean, pred_logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y_random, prior=prior
@@ -455,7 +459,7 @@ class KLBaseModel(nn.Module):
         squared_norm = np.float64(squared_norm)
         return (np.sqrt(squared_norm) / num_weights**0.5).item()
 
-    def inner_parameters(self) -> list[torch.nn.Parameter]| None:
+    def inner_parameters(self) -> list[torch.nn.Parameter] | None:
         return list(self.prior_state.parameters()) + list(
             self.prior_layers.parameters()
         )

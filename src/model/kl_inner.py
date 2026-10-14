@@ -1,9 +1,11 @@
+import logging
+
 import torch
 
-import logging
 from .kl_augmented import Model as AugmentedModel
 
 log = logging.getLogger(__name__)
+
 
 class Model(AugmentedModel):
     def _posterior_stats(self, x: torch.Tensor, y: torch.Tensor) -> list[torch.Tensor]:
@@ -74,14 +76,11 @@ class Model(AugmentedModel):
 
         return float(loss.detach())
 
-
     def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
-
 
         _, _, prior_list, _ = self._latent_pass(x, y, prior=False)
         posterior_list = [t.detach() for t in self._posterior_stats(x, y)]
         prior_match_loss = self._kl_from_stats(prior_list, posterior_list)
-
 
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
@@ -135,5 +134,3 @@ class Model(AugmentedModel):
             prior_mean[0][0][0].item(),
             prior_logvar[0][0][0].item(),
         )
-
-

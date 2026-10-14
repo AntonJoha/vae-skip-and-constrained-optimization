@@ -93,19 +93,26 @@ class Model(KLBaseModel):
 
         residual_lower = self._lower_layer_target(expected_kl) - expected_kl
         constrain_violation_lower = torch.clamp(residual_lower, min=0.0)
-        
 
         self.lambda_lower = torch.clamp(
-                self.lambda_lower.to(residual_lower.device) + self.lambda_lr * residual_lower, min=0, max=50
+            self.lambda_lower.to(residual_lower.device)
+            + self.lambda_lr * residual_lower,
+            min=0,
+            max=50,
         )
 
         residual_upper = expected_kl - self._upper_layer_target(expected_kl)
         constrain_violation_upper = torch.clamp(residual_upper, min=0.0)
         self.lambda_upper = torch.clamp(
-                self.lambda_upper.to(residual_upper.device) + self.lambda_lr * residual_upper, min=0, max=50
+            self.lambda_upper.to(residual_upper.device)
+            + self.lambda_lr * residual_upper,
+            min=0,
+            max=50,
         )
-        
-        constrain_violation = torch.max(constrain_violation_lower, constrain_violation_upper) # max violation??? Or should we sum them?
+
+        constrain_violation = torch.max(
+            constrain_violation_lower, constrain_violation_upper
+        )  # max violation??? Or should we sum them?
 
         if torch.any(
             constrain_violation
@@ -118,8 +125,8 @@ class Model(KLBaseModel):
                 self.rho + self.rho_lr * float(constrain_violation.mean().item()),
             )
             log.info("New rho %f", self.rho)
-        
-        residual = residual_lower + residual_upper # should we sum them? or max?
+
+        residual = residual_lower + residual_upper  # should we sum them? or max?
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda lower =%s, lambda upper =%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
@@ -153,25 +160,22 @@ class Model(KLBaseModel):
             combined_posterior_list=combined_posterior_list,
         )
 
-
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        residual_lower= self._lower_layer_target(layered_kl) - layered_kl
+        residual_lower = self._lower_layer_target(layered_kl) - layered_kl
 
         shifted = self.lambda_lower + self.rho * residual_lower
-        al_penalty_lower = (torch.clamp(shifted, min=0.0) ** 2 - self.lambda_lower**2) / (
-            2.0 * self.rho
-        )
+        al_penalty_lower = (
+            torch.clamp(shifted, min=0.0) ** 2 - self.lambda_lower**2
+        ) / (2.0 * self.rho)
 
-        residual_upper= layered_kl - self._upper_layer_target(layered_kl)
+        residual_upper = layered_kl - self._upper_layer_target(layered_kl)
         lambda_upper = self.lambda_upper.to(residual_upper.device)
         shifted_upper = lambda_upper + self.rho * residual_upper
-        al_penalty_upper = (torch.clamp(shifted_upper, min=0.0) ** 2 - lambda_upper**2) / (
-            2.0 * self.rho
-        )
-
+        al_penalty_upper = (
+            torch.clamp(shifted_upper, min=0.0) ** 2 - lambda_upper**2
+        ) / (2.0 * self.rho)
 
         al_penalty = al_penalty_lower.sum() + al_penalty_upper.sum()
-
 
         loss = rec + al_penalty.sum()
 
@@ -234,9 +238,8 @@ class Model(KLBaseModel):
             combined_posterior_list=combined_posterior_list,
         )
 
-
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
-        residual_lower= self._lower_layer_target(layered_kl) - layered_kl
+        residual_lower = self._lower_layer_target(layered_kl) - layered_kl
 
         lambda_lower = self.lambda_lower.to(residual_lower.device)
         shifted = lambda_lower + self.rho * residual_lower
@@ -244,16 +247,14 @@ class Model(KLBaseModel):
             2.0 * self.rho
         )
 
-        residual_upper= layered_kl - self._upper_layer_target(layered_kl)
+        residual_upper = layered_kl - self._upper_layer_target(layered_kl)
         lambda_upper = self.lambda_upper.to(residual_upper.device)
         shifted_upper = lambda_upper + self.rho * residual_upper
-        al_penalty_upper = (torch.clamp(shifted_upper, min=0.0) ** 2 - lambda_upper**2) / (
-            2.0 * self.rho
-        )
-
+        al_penalty_upper = (
+            torch.clamp(shifted_upper, min=0.0) ** 2 - lambda_upper**2
+        ) / (2.0 * self.rho)
 
         al_penalty = al_penalty_lower.sum() + al_penalty_upper.sum()
-
 
         grad_info = self.gradient_diagnostics(
             {
@@ -305,25 +306,11 @@ class Model(KLBaseModel):
         )
 
     def _upper_layer_target(self, layered_kl):
-        layered_target = self._layer_target(layered_kl) 
-        layered_target += layered_target*self.spread
+        layered_target = self._layer_target(layered_kl)
+        layered_target += layered_target * self.spread
         return layered_target
 
     def _lower_layer_target(self, layered_kl):
-        layered_target = self._layer_target(layered_kl) 
-        layered_target -= layered_target*self.spread
+        layered_target = self._layer_target(layered_kl)
+        layered_target -= layered_target * self.spread
         return layered_target
-
-
-
-
-
-
-
-
-
-
-
-
-
-
