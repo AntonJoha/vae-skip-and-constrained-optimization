@@ -6,6 +6,7 @@ from torch import nn
 
 from experiments.util import SeriesConfig
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log = logging.getLogger(__name__)
 
 TDLGMConfig = SeriesConfig
@@ -234,7 +235,7 @@ class KLBaseModel(nn.Module):
     def _layerwise_budget_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         # I currently want the same target for each layer, but this could be changed to a more complex scheme if desired
         return (
-            torch.zeros(layered_kl.shape) + self.kl_target
+            torch.zeros(layered_kl.shape).to(device) + self.kl_target
         )  # * self._layer_budget_weights(layered_kl)
 
     def _reduce_encoder_output(self, encoded: torch.Tensor) -> torch.Tensor:
