@@ -116,12 +116,7 @@ class KLBaseModel(nn.Module):
         self.config = config
         self.basic = getattr(config, "vae_baseline", False)
         self.epoch = 0
-        self.model = _make_mlp(
-            input_dim=config.hidden_dim,
-            hidden_dim=config.hidden_dim,
-            output_dim=2 * config.output_dim * config.horizon,
-            dropout=self.layer_dropout,
-        )
+        
         self.posterior_state = SequenceAttentionEncoder(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
@@ -482,11 +477,14 @@ class KLBaseModel(nn.Module):
         )
 
     def middle_parameters(self) -> list[torch.nn.Parameter] | None:
-        return (
-            list(self.posterior_state.parameters())
-            + list(self.posterior_layers.parameters())
-            + list(self.to_output.parameters())
-        )
+        if self.skip_connection:
+            return list(self.posterior_state.parameters()) + list(
+                self.posterior_layers.parameters()
+            ) + list(self.to_output.parameters()) + list(self.skip_weights.parameters())
+        else:
+            return list(self.posterior_state.parameters()) + list(
+                self.posterior_layers.parameters()
+            ) + list(self.to_output.parameters())
 
     def gradient_diagnostics(self, losses):
         groups = self._parameter_groups()

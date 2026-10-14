@@ -370,18 +370,6 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 5e-2,
                 log=True,
             ),
-            lr_lambda=trial.suggest_float(
-                "lr_lambda",
-                1e-6,
-                1e-3,
-                log=True,
-            ),
-            rho_lr=trial.suggest_float(
-                "rho_lr",
-                1e-7,
-                1e-4,
-                log=True,
-            ),
             rho=trial.suggest_float(
                 "rho",
                 1,
@@ -401,8 +389,11 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             ),
             beta=trial.suggest_float("beta", 1e-2, 1),
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
-            skip_connection=trial.suggest_categorical("skip_connection", [True, False]),
+            skip_connection=trial.suggest_categorical("skip_connection", [False]),
         )
+        runtime = replace(runtime, lr_lambda=runtime.learning_rate/10)
+        runtime = replace(runtime, rho_lr=runtime.learning_rate/100)
+
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
 
