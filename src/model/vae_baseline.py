@@ -8,14 +8,12 @@ log = logging.getLogger(__name__)
 
 
 class Model(KLBaseModel):
-
     state_dropout = 0.0
     layer_dropout = 0.0
     logvar_clamp = None
     combine_gaussian = False
     posterior_reduce = "mean"
     reverse_posterior_list = False
-
 
     def __init__(self, config):
         super().__init__(config)
@@ -60,20 +58,13 @@ class Model(KLBaseModel):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        self._layered_kl(prior_list, combined_posterior_list)
         loss = rec + self.kl_weight * kl_loss
 
         loss.backward()
         optimizer.step()
 
-        self.last_train_metrics = {
-            "posterior_recon": float(rec.detach()),
-            "posterior_kl": float(layered_kl.detach().sum()),
-            "layered_kl": layered_kl.detach(),
-        }
-
         return float(loss.detach())
-
 
     def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
@@ -105,7 +96,6 @@ class Model(KLBaseModel):
         log.info("Cosine reconstruction, kl_loss:")
         for group_name, similarity in cosine_similarity.items():
             log.info("    %-20s %.6f", group_name, similarity)
-
 
     def inner_parameters(self):
         return None

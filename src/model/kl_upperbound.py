@@ -102,14 +102,7 @@ class Model(KLBaseModel):
             self.lambda_min,
             self.lambda_max,
         )
-        self.last_train_metrics = {
-            "posterior_recon": float(expected_kl.detach().sum()),
-            "posterior_kl": float(expected_kl.detach().sum()),
-            "layered_kl": expected_kl.detach(),
-            "layer_target": self._layer_target(expected_kl).detach(),
-            "layer_residual": residual.detach(),
-            "lambda": self.lambda_.detach().clone(),
-        }
+
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
@@ -153,14 +146,6 @@ class Model(KLBaseModel):
         loss = rec + al_penalty.sum()
         loss.backward()
         optimizer.step()
-        self.last_train_metrics = {
-            "posterior_recon": float(expected_kl.detach().sum()),
-            "posterior_kl": float(expected_kl.detach().sum()),
-            "layered_kl": expected_kl.detach(),
-            "layer_target": self._layer_target(expected_kl).detach(),
-            "layer_residual": residual.detach(),
-            "lambda": self.lambda_.detach().clone(),
-        }
 
         return float(loss.detach())
 

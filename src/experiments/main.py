@@ -23,14 +23,14 @@ from experiments.util import (
     should_stop_training,
 )
 from model import (
+    VRNN,
     Basic,
     Inner_Reg_Model,
     Lower_Model,
+    RangeBound_Model,
     Reg_Model,
     Upper_Model,
     VAE_Baseline_Model,
-    VRNN,
-    RangeBound_Model,
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -107,8 +107,6 @@ def evaluate_scrabbled(model, loader: DataLoader) -> float:
         losses.append(t_recon_loss_q)
     model.train()
     return sum(losses) / max(1, len(losses))
-
-
 
 
 @torch.no_grad()
@@ -205,7 +203,7 @@ def train_model(
     model.train()
     for epoch in range(train_epochs):
         log.info("Starting epoch %03d/%03d", epoch + 1, train_epochs)
-        
+
         # training portion
 
         epoch_losses = []
@@ -251,7 +249,9 @@ def train_model(
                 )
             for attr in ("lambda_", "lambda_lower", "lambda_upper"):
                 if hasattr(model, attr):
-                    log.info(" %s per layer: %s", attr, _to_python(getattr(model, attr)))
+                    log.info(
+                        " %s per layer: %s", attr, _to_python(getattr(model, attr))
+                    )
             if runtime.grad_diagnostics:
                 count = 10
                 x_t, y_t = None, None
@@ -276,8 +276,6 @@ def train_model(
                     scrabbled_val_loss,
                 )
 
-
-                
         if reason := should_stop_training(before, val_loss):
             log.warning(
                 "Stopping early at epoch %03d because %s: %.5f",
@@ -356,10 +354,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
     def objective(trial: optuna.Trial) -> float:
         runtime = replace(
             base_runtime,
-            hidden_dim=trial.suggest_categorical(
-                "hidden_dim",
-                [32, 64, 128]
-            ),
+            hidden_dim=trial.suggest_categorical("hidden_dim", [32, 64, 128]),
             layers=trial.suggest_int(
                 "layers",
                 2,

@@ -23,7 +23,6 @@ class Model(KLBaseModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.last_train_metrics = None
         self.kl_target = float(self.config.beta)
         self.lambda_lr = float(getattr(config, "lr_lambda", self.lambda_lr))
         self.rho_lr = float(getattr(config, "rho_lr", self.rho_lr))
@@ -98,7 +97,6 @@ class Model(KLBaseModel):
             self.lambda_max,
         )
 
-
         """
         for i in range(len(self.lambda_)):
             if abs(self.lambda_[i]) < self.config.lambda_min:
@@ -151,15 +149,6 @@ class Model(KLBaseModel):
         loss = rec + kl_constraint
         loss.backward()
         optimizer.step()
-
-        self.last_train_metrics = {
-            "posterior_recon": float(rec.detach()),
-            "posterior_kl": float(layered_kl.detach().sum()),
-            "layered_kl": layered_kl.detach(),
-            "layer_target": self._layer_target(layered_kl).detach(),
-            "layer_residual": residual.detach(),
-            "lambda": self.lambda_.detach().clone(),
-        }
 
         return float(loss.detach())
 

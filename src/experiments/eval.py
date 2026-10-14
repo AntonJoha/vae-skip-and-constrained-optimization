@@ -17,10 +17,10 @@ from experiments.util import SeriesConfig, configure_logging, load_checkpoint
 from model import (
     Inner_Reg_Model,
     Lower_Model,
+    RangeBound_Model,
     Reg_Model,
     Upper_Model,
     VAE_Baseline_Model,
-    RangeBound_Model,
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,7 +69,6 @@ def nll_position(
     m = mean
     v = logvar.exp()
 
-            
     loss = nll_loss(m, y, v).mean(dim=(0, 2))
     return loss
 
@@ -89,7 +88,7 @@ def ade_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     if y.ndim == 2:
         y = y.unsqueeze(-1)
     loss = torch.linalg.vector_norm(mean - y, dim=-1).mean()
-            
+
     return loss
 
 
@@ -116,18 +115,21 @@ def wasserstein2_distance(prior: torch.Tensor, posterior: torch.Tensor) -> torch
     return torch.sqrt(squared_distance).mean()
 
 
-
 def evaluate_scrambled(model: nn.Module, loader: DataLoader):
     model.eval()
     losses = []
     for batch in loader:
         x, y = unpack_batch(batch)
         y_random = y[torch.randperm(y.size(0))]  # Scramble the target values
-        t_recon_loss_q, _ = model.compute_scrambled_losses(x, y, y_random, prior=False,)
+        t_recon_loss_q, _ = model.compute_scrambled_losses(
+            x,
+            y,
+            y_random,
+            prior=False,
+        )
         losses.append(t_recon_loss_q)
     model.train()
     return sum(losses) / max(1, len(losses))
-
 
 
 @torch.no_grad()
