@@ -139,7 +139,7 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     inner_param = model.inner_parameters()
     inner_optimizer = None
     if inner_param is not None:
-        inner_optimizer = Adam(model.inner_parameters(), lr=runtime.learning_rate)
+        inner_optimizer = Adam(model.inner_parameters(), lr=runtime.learning_rate*100)
 
     middle_param = model.middle_parameters()
     middle_optimizer = None
@@ -389,7 +389,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             ),
             beta=trial.suggest_float("beta", 1e-2, 1),
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
-            skip_connection=trial.suggest_categorical("skip_connection", [False]),
+            skip_connection=trial.suggest_categorical("skip_connection", [True]),
         )
         runtime = replace(runtime, lr_lambda=runtime.learning_rate/10)
         runtime = replace(runtime, rho_lr=runtime.learning_rate/100)
@@ -467,8 +467,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vae-baseline", action="store_true", default=False)
     parser.add_argument("--grad_diagnostics", action="store_true", default=False)
     parser.add_argument("--inner_kl", action="store_true", default=False)
-    parser.add_argument("--lr_lambda", type=float, default=1e-4)
-    parser.add_argument("--rho_lr", type=float, default=1e-5)
+    parser.add_argument("--lr_lambda", type=float, default=1e-1)
+    parser.add_argument("--rho_lr", type=float, default=1e-1)
     parser.add_argument("--scrabbled_y", action="store_true", default=False)
     parser.add_argument("--range_bound", action="store_true", default=False)
 

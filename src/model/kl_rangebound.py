@@ -122,7 +122,8 @@ class Model(KLBaseModel):
                 self.rho + self.rho_lr * float(constrain_violation.mean().item()),
             )
             log.info("New rho %f", self.rho)
-
+        
+        self.old_violation = constrain_violation
         residual = residual_lower + residual_upper  # should we sum them? or max?
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda lower =%s, lambda upper =%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
