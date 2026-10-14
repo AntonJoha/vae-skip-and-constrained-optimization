@@ -5,6 +5,18 @@ main:
 	python -m experiments.main --verbose --horizon 20 --batch_size 32 --hidden_dim 128 --layers 2 --learning_rate 0.0009 --lr_lambda 0.00002 --beta 0.65 --grad_diagnostics
 
 
+lower:
+	python -m experiments.main --verbose --lower --horizon $(horizon) --grad_diagnostics --scrabbled_y --learning_rate 0.00001 --batch_size 64 --hidden_dim 128 --layers 2 --beta 0.5 --skip_connection
+
+
+range:
+	python -m experiments.main --verbose --horizon $(horizon) --grad_diagnostics --range_bound --scrabbled_y --learning_rate 0.0007 --batch_size 16 --hidden_dim 128 --layers 2 --beta 0.396 --skip_connection
+
+
+
+
+
+
 bad:
 	python -m experiments.main --verbose --horizon 50 --learning_rate 0.001 --hidden_dim 32 --layers 2 --beta 0.5 --batch_siz 64 --reverse --epochs 1
 
@@ -14,6 +26,7 @@ upper:
 
 inner_tune:
 	python -m experiments.main --verbose --tune --horizon $(horizon) --inner_kl --grad_diagnostics
+
 
 
 
