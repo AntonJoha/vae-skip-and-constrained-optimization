@@ -57,6 +57,12 @@ def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     return x.to(device), y.to(device)
 
 
+def _to_python(value):
+    if torch.is_tensor(value):
+        return value.detach().cpu().tolist()
+    return value
+
+
 @torch.no_grad()
 def evaluate(model, loader: DataLoader) -> float:
     model.eval()
@@ -174,24 +180,6 @@ def train_model(
 
     model, inner_optimizer, middle_optimizer = build_runtime_model(runtime)
 
-    scheduler_inner = None
-    if inner_optimizer is not None:
-        scheduler_inner = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            inner_optimizer,
-            mode="min",
-            factor=0.2,
-            patience=10,
-        )
-
-    scheduler_middle = None
-    if middle_optimizer is not None:
-        scheduler_middle = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            middle_optimizer,
-            mode="min",
-            factor=0.1,
-            patience=10,
-        )
-
     train_epochs = runtime.epochs if epochs is None else epochs
     checkpoint_interval = max(1, runtime.checkpoint_interval)
     early_stopping_patience = 50
@@ -253,7 +241,17 @@ def train_model(
                 post,
             )
             log.info(" Prior NLL on train: %.5f", prior)
-            log.info(" Layered KL: %s", layered_kl)
+            log.info(" Layered KL per layer: %s", _to_python(layered_kl))
+            if hasattr(model, "_layer_target"):
+                layer_target = model._layer_target(layered_kl)
+                log.info(" Layer budget per layer: %s", _to_python(layer_target))
+                log.info(
+                    " Layer residual per layer: %s",
+                    _to_python(layered_kl - layer_target),
+                )
+            for attr in ("lambda_", "lambda_lower", "lambda_upper"):
+                if hasattr(model, attr):
+                    log.info(" %s per layer: %s", attr, _to_python(getattr(model, attr)))
             if runtime.grad_diagnostics:
                 count = 10
                 x_t, y_t = None, None
@@ -280,11 +278,6 @@ def train_model(
 
 
                 
-        if scheduler_middle is not None:
-            scheduler_middle.step(val_loss)
-        if scheduler_inner is not None:
-            scheduler_inner.step(val_loss)
-
         if reason := should_stop_training(before, val_loss):
             log.warning(
                 "Stopping early at epoch %03d because %s: %.5f",
@@ -384,14 +377,14 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             ),
             lr_lambda=trial.suggest_float(
                 "lr_lambda",
-                1e-5,
-                1e-1,
+                1e-6,
+                1e-3,
                 log=True,
             ),
             rho_lr=trial.suggest_float(
                 "rho_lr",
-                1e-6,
-                1e-2,
+                1e-7,
+                1e-4,
                 log=True,
             ),
             rho=trial.suggest_float(
@@ -488,8 +481,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vae-baseline", action="store_true", default=False)
     parser.add_argument("--grad_diagnostics", action="store_true", default=False)
     parser.add_argument("--inner_kl", action="store_true", default=False)
-    parser.add_argument("--lr_lambda", type=float, default=1e-3)
-    parser.add_argument("--rho_lr", type=float, default=1e-4)
+    parser.add_argument("--lr_lambda", type=float, default=1e-4)
+    parser.add_argument("--rho_lr", type=float, default=1e-5)
     parser.add_argument("--scrabbled_y", action="store_true", default=False)
     parser.add_argument("--range_bound", action="store_true", default=False)
 

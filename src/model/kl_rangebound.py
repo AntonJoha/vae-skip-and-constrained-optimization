@@ -51,10 +51,7 @@ class Model(KLBaseModel):
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
-        return layered_kl.new_full(
-            layered_kl.shape,
-            float(self.kl_target),
-        )
+        return self._layerwise_budget_target(layered_kl)
 
     def outer_train_step(self, dataloader):
         expected_kl = None
@@ -177,6 +174,16 @@ class Model(KLBaseModel):
 
         loss.backward()
         optimizer.step()
+        self.last_train_metrics = {
+            "posterior_recon": float(rec.detach()),
+            "posterior_kl": float(layered_kl.detach().sum()),
+            "layered_kl": layered_kl.detach(),
+            "layer_target": self._layer_target(layered_kl).detach(),
+            "layer_residual_lower": residual_lower.detach(),
+            "layer_residual_upper": residual_upper.detach(),
+            "lambda_lower": self.lambda_lower.detach().clone(),
+            "lambda_upper": self.lambda_upper.detach().clone(),
+        }
 
         return float(loss.detach())
 

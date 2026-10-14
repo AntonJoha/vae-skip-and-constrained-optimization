@@ -70,6 +70,9 @@ class Model(AugmentedModel):
             "posterior_recon": float(rec.detach()),
             "posterior_kl": float(layered_kl.detach().sum()),
             "layered_kl": layered_kl.detach(),
+            "layer_target": self._layer_target(layered_kl).detach(),
+            "layer_residual": residual.detach(),
+            "lambda": self.lambda_.detach().clone(),
         }
 
         return float(loss.detach())

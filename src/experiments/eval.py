@@ -238,6 +238,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     logvars_scaled = []
     post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
     prior_latents, posterior_latents = [], []
+    layered_kl_losses = []
     for batch in loader:
         x, y = unpack_batch(batch)
 
@@ -267,6 +268,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         ) / max(1, len(prior_list))
         wasserstein2_losses.append(wasserstein2_distance_score)
         wasserstein2_similarity_losses.append(1.0 / (1.0 + wasserstein2_distance_score))
+        layered_kl_losses.append(model.get_layered_kl(x, y))
 
         mean_scaled = scaler[0](mean)
         y_scaled = scaler[0](y)
@@ -295,6 +297,9 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         ys.append(y)
 
     scrambled_loss = evaluate_scrambled(model, loader)
+    layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
+    layer_target = model._layer_target(layered_kl)
+    layer_residual = layered_kl - layer_target
     return {
         "x": xs,
         "x_scaled": xs_scaled,
@@ -315,6 +320,13 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "wasserstein2_similarity_losses": wasserstein2_similarity_losses,
         "wasserstein2_similarity": sum(wasserstein2_similarity_losses)
         / max(1, len(wasserstein2_similarity_losses)),
+        "layered_kl": layered_kl,
+        "layer_target": layer_target,
+        "layer_residual": layer_residual,
+        "lambda": getattr(model, "lambda_", None),
+        "lambda_lower": getattr(model, "lambda_lower", None),
+        "lambda_upper": getattr(model, "lambda_upper", None),
+        "layer_budget_weights": model._layer_budget_weights(layered_kl),
         "y_scaled": ys_scaled,
         "losses": losses,
         "losses_position": losses_position,

@@ -152,8 +152,8 @@ class KLBaseModel(nn.Module):
         self.nllLoss = nn.GaussianNLLLoss()
         self.last_train_metrics = None
         self.lambda_ = 0.0
-        self.lambda_lr = float(getattr(config, "lr_lambda", 1e-3))
-        self.rho_lr = float(getattr(config, "rho_lr", 1e-4))
+        self.lambda_lr = float(getattr(config, "lr_lambda", 1e-4))
+        self.rho_lr = float(getattr(config, "rho_lr", 1e-5))
         self.kl_target = float(config.beta)
         self.kl_penalty = 1.0
         self.rho = float(getattr(config, "rho", 1.0))
@@ -224,6 +224,20 @@ class KLBaseModel(nn.Module):
             exp_diff1 + exp_diff2
         )
         return combined_mean, combined_logvar
+
+    def _layer_budget_weights(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        num_layers = max(1, layered_kl.numel())
+        weights = torch.arange(
+            num_layers,
+            0,
+            -1,
+            device=layered_kl.device,
+            dtype=layered_kl.dtype,
+        )
+        return weights / weights.sum()
+
+    def _layerwise_budget_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        return self.kl_target * self._layer_budget_weights(layered_kl)
 
     def _reduce_encoder_output(self, encoded: torch.Tensor) -> torch.Tensor:
         if self.posterior_reduce == "mean":

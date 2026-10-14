@@ -38,8 +38,6 @@ class Model(KLBaseModel):
         self.lambda_min = torch.zeros(config.layers)
         if config.lambda_min > 0:
             self.lambda_min += config.lambda_min
-        
-        self.lambda_min = torch.zeros(config.layers)
         self.lambda_max = torch.zeros(config.layers) + config.lambda_max
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
@@ -50,10 +48,7 @@ class Model(KLBaseModel):
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
-        return layered_kl.new_full(
-            layered_kl.shape,
-            float(self.kl_target) / max(1, layered_kl.numel()),
-        )
+        return self._layerwise_budget_target(layered_kl)
 
     def outer_train_step(self, dataloader):
         expected_kl = None
@@ -107,6 +102,14 @@ class Model(KLBaseModel):
             self.lambda_min,
             self.lambda_max,
         )
+        self.last_train_metrics = {
+            "posterior_recon": float(expected_kl.detach().sum()),
+            "posterior_kl": float(expected_kl.detach().sum()),
+            "layered_kl": expected_kl.detach(),
+            "layer_target": self._layer_target(expected_kl).detach(),
+            "layer_residual": residual.detach(),
+            "lambda": self.lambda_.detach().clone(),
+        }
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),
@@ -150,11 +153,13 @@ class Model(KLBaseModel):
         loss = rec + al_penalty.sum()
         loss.backward()
         optimizer.step()
-
         self.last_train_metrics = {
-            "posterior_recon": float(rec.detach()),
-            "posterior_kl": float(layered_kl.detach().sum()),
-            "layered_kl": layered_kl.detach(),
+            "posterior_recon": float(expected_kl.detach().sum()),
+            "posterior_kl": float(expected_kl.detach().sum()),
+            "layered_kl": expected_kl.detach(),
+            "layer_target": self._layer_target(expected_kl).detach(),
+            "layer_residual": residual.detach(),
+            "lambda": self.lambda_.detach().clone(),
         }
 
         return float(loss.detach())
