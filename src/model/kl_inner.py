@@ -68,12 +68,6 @@ class Model(AugmentedModel):
         loss.backward()
         optimizer.step()
 
-        self.last_train_metrics = {
-            "posterior_recon": float(rec.detach()),
-            "posterior_kl": float(layered_kl.detach().sum()),
-            "layered_kl": layered_kl.detach(),
-        }
-
         return float(loss.detach())
 
     def print_gradients(self, x: torch.Tensor, y: torch.Tensor):

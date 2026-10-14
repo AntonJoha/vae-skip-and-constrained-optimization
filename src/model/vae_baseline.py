@@ -58,17 +58,11 @@ class Model(KLBaseModel):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+        self._layered_kl(prior_list, combined_posterior_list)
         loss = rec + self.kl_weight * kl_loss
 
         loss.backward()
         optimizer.step()
-
-        self.last_train_metrics = {
-            "posterior_recon": float(rec.detach()),
-            "posterior_kl": float(layered_kl.detach().sum()),
-            "layered_kl": layered_kl.detach(),
-        }
 
         return float(loss.detach())
 

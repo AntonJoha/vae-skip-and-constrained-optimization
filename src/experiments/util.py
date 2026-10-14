@@ -68,8 +68,8 @@ class SeriesConfig(BaselineConfig):
     # Training overrides
     batch_size: int = 32
     learning_rate: float = 1e-3
-    lr_lambda: float = 1e-3
-    rho_lr: float = 1e-4
+    lr_lambda: float = 1e-4
+    rho_lr: float = 1e-5
     rho: float = 2.0
 
     beta: float = 0.565

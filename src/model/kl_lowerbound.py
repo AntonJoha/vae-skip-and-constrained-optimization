@@ -44,10 +44,7 @@ class Model(KLBaseModel):
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
-        return layered_kl.new_full(
-            layered_kl.shape,
-            float(self.kl_target),
-        )
+        return self._layerwise_budget_target(layered_kl)
 
     def outer_train_step(self, dataloader):
         expected_kl = None
@@ -101,6 +98,7 @@ class Model(KLBaseModel):
             self.lambda_min.to(residual.device),
             self.lambda_max.to(residual.device),
         )
+
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
             expected_kl.mean().item(),

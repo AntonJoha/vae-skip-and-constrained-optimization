@@ -23,7 +23,6 @@ class Model(KLBaseModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.last_train_metrics = None
         self.kl_target = float(self.config.beta)
         self.lambda_lr = float(getattr(config, "lr_lambda", self.lambda_lr))
         self.rho_lr = float(getattr(config, "rho_lr", self.rho_lr))
@@ -36,17 +35,10 @@ class Model(KLBaseModel):
         self.lambda_max = self.lambda_max.to(device)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
-        return layered_kl.new_full(
-            layered_kl.shape,
-            float(self.kl_target) / max(1, layered_kl.numel()),
-        )
+        return self._layerwise_budget_target(layered_kl)
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-        self.kl_target = float(self.config.beta)
-        self.kl_target = 0
-        if not self.basic:
-            self.kl_target = float(self.config.beta) / ((self.epoch + 1) ** 0.5)
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
 
     def outer_train_step(self, dataloader):
@@ -130,6 +122,7 @@ class Model(KLBaseModel):
         x: torch.Tensor,
         y: torch.Tensor,
         optimizer: torch.optim.Optimizer,
+        _inner_optimizer: torch.optim.Optimizer | None = None,
         inner_optimizer=None,
     ) -> float:
         self.train()
@@ -156,12 +149,6 @@ class Model(KLBaseModel):
         loss = rec + kl_constraint
         loss.backward()
         optimizer.step()
-
-        self.last_train_metrics = {
-            "posterior_recon": float(rec.detach()),
-            "posterior_kl": float(layered_kl.detach().sum()),
-            "layered_kl": layered_kl.detach(),
-        }
 
         return float(loss.detach())
 

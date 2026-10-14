@@ -116,12 +116,7 @@ class KLBaseModel(nn.Module):
         self.config = config
         self.basic = getattr(config, "vae_baseline", False)
         self.epoch = 0
-        self.model = _make_mlp(
-            input_dim=config.hidden_dim,
-            hidden_dim=config.hidden_dim,
-            output_dim=2 * config.output_dim * config.horizon,
-            dropout=self.layer_dropout,
-        )
+        
         self.posterior_state = SequenceAttentionEncoder(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
@@ -152,8 +147,8 @@ class KLBaseModel(nn.Module):
         self.nllLoss = nn.GaussianNLLLoss()
         self.last_train_metrics = None
         self.lambda_ = 0.0
-        self.lambda_lr = float(getattr(config, "lr_lambda", 1e-3))
-        self.rho_lr = float(getattr(config, "rho_lr", 1e-4))
+        self.lambda_lr = float(getattr(config, "lr_lambda", 1e-4))
+        self.rho_lr = float(getattr(config, "rho_lr", 1e-5))
         self.kl_target = float(config.beta)
         self.kl_penalty = 1.0
         self.rho = float(getattr(config, "rho", 1.0))
@@ -224,6 +219,23 @@ class KLBaseModel(nn.Module):
             exp_diff1 + exp_diff2
         )
         return combined_mean, combined_logvar
+
+    def _layer_budget_weights(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        num_layers = max(1, layered_kl.numel())
+        weights = torch.arange(
+            num_layers,
+            0,
+            -1,
+            device=layered_kl.device,
+            dtype=layered_kl.dtype,
+        )
+        return weights / weights.sum()
+
+    def _layerwise_budget_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
+        # I currently want the same target for each layer, but this could be changed to a more complex scheme if desired
+        return (
+            torch.zeros(layered_kl.shape) + self.kl_target
+        )  # * self._layer_budget_weights(layered_kl)
 
     def _reduce_encoder_output(self, encoded: torch.Tensor) -> torch.Tensor:
         if self.posterior_reduce == "mean":
@@ -465,11 +477,14 @@ class KLBaseModel(nn.Module):
         )
 
     def middle_parameters(self) -> list[torch.nn.Parameter] | None:
-        return (
-            list(self.posterior_state.parameters())
-            + list(self.posterior_layers.parameters())
-            + list(self.to_output.parameters())
-        )
+        if self.skip_connection:
+            return list(self.posterior_state.parameters()) + list(
+                self.posterior_layers.parameters()
+            ) + list(self.to_output.parameters()) + list(self.skip_weights.parameters())
+        else:
+            return list(self.posterior_state.parameters()) + list(
+                self.posterior_layers.parameters()
+            ) + list(self.to_output.parameters())
 
     def gradient_diagnostics(self, losses):
         groups = self._parameter_groups()
