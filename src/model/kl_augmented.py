@@ -34,6 +34,11 @@ class Model(KLBaseModel):
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
 
+        if config.set_lambda is not None:
+            self.lambda_ *= config.set_lambda
+            for i in range(config.layers):
+                self.lambda_[i] = self.lambda_[i]*config.lambda_scaler**(i-1)
+
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return self._layerwise_budget_target(layered_kl)
 
@@ -91,11 +96,14 @@ class Model(KLBaseModel):
 
         self.old_violation = constrain_violation
 
-        self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.lambda_lr * residual,
-            self.lambda_min,
-            self.lambda_max,
-        )
+        if self.config.set_lambda is not None:
+            self.lambda_ = torch.clamp(
+                self.lambda_.to(residual.device) + self.lambda_lr * residual,
+                self.lambda_min,
+                self.lambda_max,
+            )
+        else:
+            self.lambda_ = self.lambda_*torch.sign(residual)
 
         """
         for i in range(len(self.lambda_)):

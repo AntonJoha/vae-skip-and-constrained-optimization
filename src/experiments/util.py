@@ -104,6 +104,8 @@ class SeriesConfig(BaselineConfig):
 
     lambda_min: float = 0.0
     lambda_max: float = 50
+    set_lambda: float | None = None
+    lambda_scaler: float = 1.0
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:

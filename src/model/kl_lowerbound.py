@@ -38,6 +38,13 @@ class Model(KLBaseModel):
         self.lambda_ = self.lambda_min.clone()
         self.old_violation = torch.full((config.layers,), torch.inf)
 
+        if config.set_lambda is not None:
+            self.lambda_ *= config.set_lambda
+            for i in range(config.layers):
+                self.lambda_[i] = self.lambda_[i]*config.lambda_scaler**(i-1)
+
+
+
     def set_epoch(self, epoch: int):
         self.epoch = epoch
         self.kl_target = float(self.config.beta)
@@ -98,6 +105,14 @@ class Model(KLBaseModel):
             self.lambda_min.to(residual.device),
             self.lambda_max.to(residual.device),
         )
+
+
+        if self.config.set_lambda is not None:
+            self.lambda_ = torch.clamp(
+                self.lambda_.to(residual.device) + self.lambda_lr * residual,
+                self.lambda_min,
+                self.lambda_max,
+            )
 
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
