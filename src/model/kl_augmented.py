@@ -18,7 +18,7 @@ class Model(KLBaseModel):
     layer_dropout = 0.1
     logvar_clamp = (-15.0, 2.0)
     combine_gaussian = False
-    posterior_reduce = "mean"
+    posterior_reduce = "last"
     reverse_posterior_list = True
 
     def __init__(self, config):
