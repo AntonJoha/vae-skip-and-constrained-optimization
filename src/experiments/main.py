@@ -471,6 +471,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rho_lr", type=float, default=1e-1)
     parser.add_argument("--scrabbled_y", action="store_true", default=False)
     parser.add_argument("--range_bound", action="store_true", default=False)
+    parser.add_argument("--set_lambda", type=float, default=None)
+    parser.add_argument("--lambda_scaler", type=float, default=0.1)
 
     return parser.parse_args()
 

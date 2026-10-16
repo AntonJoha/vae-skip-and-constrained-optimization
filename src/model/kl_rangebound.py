@@ -17,7 +17,7 @@ class Model(KLBaseModel):
     layer_dropout = 0.0
     logvar_clamp = None
     combine_gaussian = False
-    posterior_reduce = "mean"
+    posterior_reduce = "last"
     reverse_posterior_list = False
 
     def __init__(self, config):
@@ -258,6 +258,7 @@ class Model(KLBaseModel):
             {
                 "reconstruction": rec,
                 "al_penalty": al_penalty,
+                "full_loss": rec + al_penalty,
             }
         )
 

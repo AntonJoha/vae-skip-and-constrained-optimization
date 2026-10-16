@@ -2,6 +2,9 @@ import logging
 
 import torch
 
+torch.autograd.set_detect_anomaly(True)
+torch.set_warn_always(True)
+
 from experiments.util import SeriesConfig
 
 from .kl_base import KLBaseModel
@@ -17,7 +20,7 @@ class Model(KLBaseModel):
     layer_dropout = 0.0
     logvar_clamp = None
     combine_gaussian = False
-    posterior_reduce = "mean"
+    posterior_reduce = "last"
     reverse_posterior_list = False
 
     def __init__(self, config):
@@ -37,6 +40,15 @@ class Model(KLBaseModel):
         )
         self.lambda_ = self.lambda_min.clone()
         self.old_violation = torch.full((config.layers,), torch.inf)
+
+        if config.set_lambda is not None:
+            self.lambda_ = torch.zeros(config.layers).to(device) + config.set_lambda
+            log.info("Hello")
+            for i in range(config.layers):
+                self.lambda_[i] = self.lambda_[i]*config.lambda_scaler**(i)
+            log.info(str(self.lambda_))
+
+
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -93,11 +105,15 @@ class Model(KLBaseModel):
                 self.rho + self.rho_lr * float(constrain_violation.mean().item()),
             )
         self.old_violation = constrain_violation
-        self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.lambda_lr * residual,
-            self.lambda_min.to(residual.device),
-            self.lambda_max.to(residual.device),
-        )
+        
+
+
+        if self.config.set_lambda is None:
+            self.lambda_ = torch.clamp(
+                self.lambda_.to(residual.device) + self.lambda_lr * residual,
+                self.lambda_min,
+                self.lambda_max,
+            )
 
         log.info(
             "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
@@ -123,6 +139,8 @@ class Model(KLBaseModel):
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
         )
+
+
         _, prior_kl = self._compute_losses(
             y,
             mean,
@@ -233,6 +251,25 @@ class Model(KLBaseModel):
             rec.item(),
             al_pentaly.item(),
         )
+
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "full_loss": rec + al_pentaly,
+            }
+        )
+        log.info("Scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+        log.info(
+            "  reconstruction=%.6f kl_constraint=%.6f",
+            rec.item(),
+            al_pentaly.item(),
+        )
+
+
 
         cosine_similarity = self.gradient_cosine_similarity(rec, al_pentaly)
 

@@ -18,7 +18,7 @@ class Model(KLBaseModel):
     layer_dropout = 0.1
     logvar_clamp = (-15.0, 2.0)
     combine_gaussian = False
-    posterior_reduce = "mean"
+    posterior_reduce = "last"
     reverse_posterior_list = True
 
     def __init__(self, config):
@@ -33,6 +33,11 @@ class Model(KLBaseModel):
         self.lambda_max = torch.zeros(config.layers) + 50
         self.lambda_min = self.lambda_min.to(device)
         self.lambda_max = self.lambda_max.to(device)
+
+        if config.set_lambda is not None:
+            self.lambda_ += config.set_lambda
+            for i in range(config.layers):
+                self.lambda_[i] = self.lambda_[i]*config.lambda_scaler**(i)
 
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return self._layerwise_budget_target(layered_kl)
@@ -91,11 +96,14 @@ class Model(KLBaseModel):
 
         self.old_violation = constrain_violation
 
-        self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.lambda_lr * residual,
-            self.lambda_min,
-            self.lambda_max,
-        )
+        if self.config.set_lambda is None:
+            self.lambda_ = torch.clamp(
+                self.lambda_.to(residual.device) + self.lambda_lr * residual,
+                self.lambda_min,
+                self.lambda_max,
+            )
+        else:
+            self.lambda_ = self.lambda_*torch.sign(residual)
 
         """
         for i in range(len(self.lambda_)):
@@ -178,6 +186,7 @@ class Model(KLBaseModel):
             {
                 "reconstruction": rec,
                 "kl_constraint": kl_constraint,
+                "full_loss": rec + kl_constraint,
             }
         )
 
@@ -191,6 +200,8 @@ class Model(KLBaseModel):
             rec.item(),
             kl_constraint.item(),
         )
+
+
 
         cosine_similarity = self.gradient_cosine_similarity(rec, kl_constraint)
         log.info("Cosine reconstruction, kl_constraint:")
