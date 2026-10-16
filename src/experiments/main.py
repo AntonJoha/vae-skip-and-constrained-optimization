@@ -155,6 +155,18 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     return model, inner_optimizer, middle_optimizer
 
 
+def _scale_optimizer_lrs(
+    optimizers: tuple[Adam | None, ...], factor: float, runtime: SeriesConfig
+) -> None:
+    for optimizer in optimizers:
+        if optimizer is None:
+            continue
+        for param_group in optimizer.param_groups:
+            param_group["lr"] *= factor
+    if runtime.verbose:
+        log.info("Scaled learning rate by %.3f", factor)
+
+
 def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
     for batch in loader:
         x, y = unpack_batch(batch)
@@ -216,6 +228,13 @@ def train_model(
             )
 
         model.outer_train_step(train_loader)
+
+        if runtime.lr_decay_epoch > 0 and (epoch + 1) == runtime.lr_decay_epoch:
+            _scale_optimizer_lrs(
+                (inner_optimizer, middle_optimizer),
+                runtime.lr_decay_factor,
+                runtime,
+            )
 
         val_loss = evaluate(model, val_loader)
 
@@ -453,6 +472,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--learning_rate", type=float, default=0.001, help="Fix the learning rate"
+    )
+    parser.add_argument(
+        "--lr_decay_epoch",
+        type=int,
+        default=500,
+        help="Epoch at which to scale the learning rate down.",
+    )
+    parser.add_argument(
+        "--lr_decay_factor",
+        type=float,
+        default=0.1,
+        help="Factor used to scale the learning rate down.",
     )
     parser.add_argument(
         "--reduced_dataset", type=float, default=1.0, help="Reduce the used dataset"

@@ -71,6 +71,8 @@ class SeriesConfig(BaselineConfig):
     lr_lambda: float = 1e-4
     rho_lr: float = 1e-5
     rho: float = 2.0
+    lr_decay_epoch: int = 500
+    lr_decay_factor: float = 0.1
 
     beta: float = 0.565
     alpha: float = 1e-2
