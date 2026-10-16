@@ -258,6 +258,7 @@ class Model(KLBaseModel):
             {
                 "reconstruction": rec,
                 "al_penalty": al_penalty,
+                "full_loss": rec + al_penalty,
             }
         )
 
