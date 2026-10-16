@@ -444,6 +444,7 @@ class KLBaseModel(nn.Module):
 
     def _parameter_groups(self):
         groups = {
+            "complete": list(self.parameters()),
             "posterior_encoder": list(self.posterior_state.parameters()),
             "posterior_layers": list(self.posterior_layers.parameters()),
             "prior_encoder": list(self.prior_state.parameters()),
