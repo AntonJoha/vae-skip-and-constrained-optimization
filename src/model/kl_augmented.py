@@ -186,6 +186,7 @@ class Model(KLBaseModel):
             {
                 "reconstruction": rec,
                 "kl_constraint": kl_constraint,
+                "full_loss": rec + kl_constraint,
             }
         )
 
@@ -199,6 +200,8 @@ class Model(KLBaseModel):
             rec.item(),
             kl_constraint.item(),
         )
+
+
 
         cosine_similarity = self.gradient_cosine_similarity(rec, kl_constraint)
         log.info("Cosine reconstruction, kl_constraint:")

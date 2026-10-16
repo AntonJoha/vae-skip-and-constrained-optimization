@@ -252,6 +252,25 @@ class Model(KLBaseModel):
             al_pentaly.item(),
         )
 
+
+        grad_info = self.gradient_diagnostics(
+            {
+                "full_loss": rec + al_pentaly,
+            }
+        )
+        log.info("Scaled gradient norms:")
+        for loss_name, groups in grad_info.items():
+            log.info("  %s:", loss_name)
+            for group_name, norm in groups.items():
+                log.info("    %-20s %.6e", group_name, norm)
+        log.info(
+            "  reconstruction=%.6f kl_constraint=%.6f",
+            rec.item(),
+            al_pentaly.item(),
+        )
+
+
+
         cosine_similarity = self.gradient_cosine_similarity(rec, al_pentaly)
 
         log.info(
