@@ -2,6 +2,9 @@ import logging
 
 import torch
 
+torch.autograd.set_detect_anomaly(True)
+torch.set_warn_always(True)
+
 from experiments.util import SeriesConfig
 
 from .kl_base import KLBaseModel
@@ -39,9 +42,11 @@ class Model(KLBaseModel):
         self.old_violation = torch.full((config.layers,), torch.inf)
 
         if config.set_lambda is not None:
-            self.lambda_ *= config.set_lambda
+            self.lambda_ = torch.zeros(config.layers).to(device) + config.set_lambda
+            log.info("Hello")
             for i in range(config.layers):
-                self.lambda_[i] = self.lambda_[i]*config.lambda_scaler**(i-1)
+                self.lambda_[i] = self.lambda_[i]*config.lambda_scaler**(i)
+            log.info(str(self.lambda_))
 
 
 
@@ -100,14 +105,10 @@ class Model(KLBaseModel):
                 self.rho + self.rho_lr * float(constrain_violation.mean().item()),
             )
         self.old_violation = constrain_violation
-        self.lambda_ = torch.clamp(
-            self.lambda_.to(residual.device) + self.lambda_lr * residual,
-            self.lambda_min.to(residual.device),
-            self.lambda_max.to(residual.device),
-        )
+        
 
 
-        if self.config.set_lambda is not None:
+        if self.config.set_lambda is None:
             self.lambda_ = torch.clamp(
                 self.lambda_.to(residual.device) + self.lambda_lr * residual,
                 self.lambda_min,
@@ -138,6 +139,8 @@ class Model(KLBaseModel):
         mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
             x, y, prior=False
         )
+
+
         _, prior_kl = self._compute_losses(
             y,
             mean,
