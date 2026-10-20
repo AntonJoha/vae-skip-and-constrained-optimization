@@ -139,7 +139,7 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
     inner_param = model.inner_parameters()
     inner_optimizer = None
     if inner_param is not None:
-        inner_optimizer = Adam(model.inner_parameters(), lr=runtime.learning_rate*100)
+        inner_optimizer = Adam(model.inner_parameters(), lr=runtime.learning_rate*1000)
 
     middle_param = model.middle_parameters()
     middle_optimizer = None

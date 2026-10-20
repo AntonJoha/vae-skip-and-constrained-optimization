@@ -1,16 +1,28 @@
-.PHONY: main tDLGM util eval lint shampoo vae_baseline_tune range
+.PHONY: main tDLGM util eval lint shampoo vae_baseline_tune range lower vae
 horizon = 20
 
 main:
-	python -m experiments.main --verbose --horizon 20 --batch_size 32 --hidden_dim 128 --layers 3 --learning_rate 0.00001 --beta 0.5 --grad_diagnostics --set_lambda 1 --scrabbled_y --skip_connection --lambda_scaler 1
+	python -m experiments.main --verbose --horizon 20 --batch_size 64 --hidden_dim 64 --layers 2 --learning_rate 0.00005 --beta 0.5  --scrabbled_y --skip_connection 
 
 
 lower:
-	python -m experiments.main --verbose --lower --horizon $(horizon) --grad_diagnostics --scrabbled_y --learning_rate 0.0001 --batch_size 128 --hidden_dim 128 --layers 2 --beta 0.5 --skip_connection --set_lambda 1 --lambda_scaler 1
+	python -m experiments.main --verbose --lower --horizon $(horizon) --grad_diagnostics --scrabbled_y --learning_rate 0.00001 --batch_size 64 --hidden_dim 128 --layers 2 --beta 0.5 --skip_connection --set_lambda 1 --lambda_scaler 1
 
 
 range:
-	python -m experiments.main --verbose --horizon $(horizon) --grad_diagnostics --range_bound --scrabbled_y --learning_rate 0.0001 --batch_size 64 --hidden_dim 128 --layers 2 --beta 0.396 --skip_connection --set_lambda 1 --lambda_scaler 0.9
+	python -m experiments.main --verbose --horizon $(horizon) --range_bound --scrabbled_y --learning_rate 0.0005 --batch_size 64 --hidden_dim 128 --layers 2 --beta 0.8 --skip_connection --set_lambda 1 --lambda_scaler 1
+
+
+
+long:
+	python -m experiments.main --verbose --horizon $(horizon) --grad_diagnostics --range_bound --scrabbled_y --learning_rate 0.00001 --batch_size 64 --hidden_dim 64 --layers 2 --beta 0.1 --skip_connection --set_lambda 3 --lambda_scaler 0.5
+
+
+
+vae:
+	python -m experiments.main --verbose --horizon $(horizon) --vae-baseline --learning_rate 0.001 --scrabbled_y --batch_size 64 --hidden_dim 64 --layers 2 --beta 1
+
+
 
 
 

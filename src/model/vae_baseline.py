@@ -21,7 +21,7 @@ class Model(KLBaseModel):
         total_epochs = (
             self.config.tuning_epochs if self.config.tune else self.config.epochs
         )
-        self.kl_warmup_epochs = max(1, int(total_epochs * 0.3))
+        self.kl_warmup_epochs = max(1, int(20))
         self.kl_weight = 0.0
 
     def set_epoch(self, epoch: int):

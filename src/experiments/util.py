@@ -155,8 +155,8 @@ def checkpoint_filename(suffix: str) -> str:
 def should_stop_training(initial_loss: float, current_loss: float) -> str | None:
     if not math.isfinite(current_loss):
         return "loss became non-finite"
-    if current_loss >= 20 * initial_loss:
-        return "loss exceeded 20x the initial loss"
+    if current_loss >= 200* initial_loss:
+        return "loss exceeded 200x the initial loss"
     return None
 
 

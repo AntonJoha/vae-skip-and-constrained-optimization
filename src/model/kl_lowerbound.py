@@ -1,10 +1,6 @@
 import logging
 
 import torch
-
-torch.autograd.set_detect_anomaly(True)
-torch.set_warn_always(True)
-
 from experiments.util import SeriesConfig
 
 from .kl_base import KLBaseModel
@@ -24,6 +20,11 @@ class Model(KLBaseModel):
     reverse_posterior_list = False
 
     def __init__(self, config):
+
+        torch.autograd.set_detect_anomaly(True)
+        torch.set_warn_always(True)
+
+
         super().__init__(config)
         self.lambda_ = 0.0
         self.lambda_lr = float(getattr(config, "lr_lambda", self.lambda_lr))
