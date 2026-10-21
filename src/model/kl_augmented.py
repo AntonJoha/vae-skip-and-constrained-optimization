@@ -16,9 +16,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class Model(KLBaseModel):
     state_dropout = 0.2
     layer_dropout = 0.2
-    logvar_clamp = (-15.0, 2.0)
+    logvar_clamp = (-10.0, 2.0)
     combine_gaussian = False
-    posterior_reduce = "last"
+    posterior_reduce = "mean"
     reverse_posterior_list = True
 
     def __init__(self, config):
