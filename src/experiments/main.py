@@ -172,7 +172,7 @@ def train_model(
     torch.manual_seed(runtime.seed)
     runtime = replace(runtime, output_dim=runtime.horizon)
 
-    train_loader, val_loader, _test_loader = make_dataloaders(runtime)
+    train_loader, val_loader, test_loader = make_dataloaders(runtime)
 
     _set_input_output_dim(runtime, train_loader)
 
@@ -223,15 +223,17 @@ def train_model(
 
         if runtime.verbose:
             mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
+            test_loss = evaluate(model, test_loader)
             val_posterior = evaluate_posterior(model, val_loader)
             post = evaluate_posterior(model, train_loader)
             prior = evaluate(model, train_loader)
             layered_kl = evaluate_kl(model, train_loader)
             log.info("========== Epoch %03d =========", epoch + 1)
             log.info(
-                " Train loss: %.5f: NLL on val set: %.5f, Posterior NLL on val: %.5f",
+                " Train loss: %.5f: NLL on val set: %.5f, NLL on test set: %.5f, Posterior NLL on val: %.5f",
                 mean_loss,
                 val_loss,
+                test_loss,
                 val_posterior,
             )
             log.info(
