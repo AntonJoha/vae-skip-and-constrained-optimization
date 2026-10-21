@@ -121,7 +121,7 @@ def train_model(
     torch.manual_seed(runtime.seed)
     runtime = replace(runtime, output_dim=runtime.horizon)
 
-    train_loader, val_loader, _test_loader = make_dataloaders(runtime)
+    train_loader, val_loader, test_loader = make_dataloaders(runtime)
     _set_input_output_dim(runtime, train_loader)
 
     model = Baseline(runtime).to(device)
@@ -162,11 +162,13 @@ def train_model(
 
         if runtime.verbose:
             mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
+            test_loss = evaluate(model, test_loader)
             logger.info(
-                "Epoch %03d: Loss %.5f  Val loss %.5f",
+                "Epoch %03d: Loss %.5f  Val loss %.5f  Test NLL %.5f",
                 epoch + 1,
                 mean_loss,
                 val_loss,
+                test_loss,
             )
 
         if val_loss < best_val:
