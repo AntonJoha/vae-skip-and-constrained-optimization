@@ -81,8 +81,8 @@ class SeriesConfig(BaselineConfig):
     std: float = 0.2
 
     # Training/tuning
-    tuning_trials: int = 20
-    tuning_epochs: int = 20
+    tuning_trials: int = 50
+    tuning_epochs: int = 50
     tune: bool = False
 
     # Misc
