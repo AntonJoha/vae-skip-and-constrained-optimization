@@ -46,6 +46,7 @@ folder:
 	mkdir -p results/lower
 	mkdir -p results/range
 	mkdir -p results/vae_no_warmup
+	mkdir -p results/vae
 
 
 
