@@ -396,9 +396,11 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
         )
         runtime = replace(runtime, lr_lambda=runtime.learning_rate/10)
         runtime = replace(runtime, rho_lr=runtime.learning_rate/10)
+        log.info("BEFORE")
         if runtime.vae_no_warmup:
+            log.info("I AM HERE")
             runtime = replace(runtime, kl_warmup_epochs=0)
-
+        log.info("AFTER")
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
 
@@ -469,7 +471,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rho", type=float, default=2.0)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--reverse", action="store_true", default=False)
-    parser.add_argument("--vae-baseline", action="store_true", default=False)
+    parser.add_argument("--vae_baseline", action="store_true", default=False)
     parser.add_argument("--grad_diagnostics", action="store_true", default=False)
     parser.add_argument("--inner_kl", action="store_true", default=False)
     parser.add_argument("--lr_lambda", type=float, default=1e-1)

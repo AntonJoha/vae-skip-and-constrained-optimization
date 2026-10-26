@@ -17,8 +17,10 @@ class Model(KLBaseModel):
 
     def __init__(self, config):
         super().__init__(config)
+        log.info("HELLO")
         self.beta = float(self.config.beta)
         self.kl_warmup_epochs = config.kl_warmup_epochs
+        log.info( self.kl_warmup_epochs)
         self.kl_weight = 0.0
 
     def set_epoch(self, epoch: int):
