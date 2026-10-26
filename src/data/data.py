@@ -667,6 +667,7 @@ def get_scale_constant(runtime):
     dataset_path = Path(get_dataset_names()[0])
     print(f"Loading dataset from {dataset_path}")
 
+
     if dataset_path.suffix == ".ped":
         mean, std = ped_get_mean_std(dataset_path)
         mean = torch.tensor(mean, dtype=torch.float32)
@@ -674,6 +675,12 @@ def get_scale_constant(runtime):
         print("MEAN", mean, "STD", std)
 
         return lambda x: x.cpu() * std + mean, lambda x: x.cpu() + 2 * torch.log(std)
+    
+    elif dataset_path.suffix == ".tsf": 
+        return  (
+                lambda x: x,
+                lambda x: x
+                )
 
     else:
         # TODO : Implement scaling for other dataset types
@@ -716,6 +723,7 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
+        "data/nn5_daily_dataset_without_missing_values.tsf",
         "data/AirQualityUCI.csv",
         "data/solar_4_seconds_dataset.tsf",
         "data/covid_deaths_dataset.tsf",
