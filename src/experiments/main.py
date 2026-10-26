@@ -390,11 +390,14 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 log=True,
             ),
             beta=trial.suggest_float("beta", 1e-2, 1),
+            kl_warmup_epochs=trial.suggest_int("kl_warmup_epochs", 0, 50),
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
             skip_connection=trial.suggest_categorical("skip_connection", [True]),
         )
         runtime = replace(runtime, lr_lambda=runtime.learning_rate/10)
-        runtime = replace(runtime, rho_lr=runtime.learning_rate/100)
+        runtime = replace(runtime, rho_lr=runtime.learning_rate/10)
+        if runtime.vae_no_warmup:
+            runtime = replace(runtime, kl_warmup_epochs=0)
 
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best

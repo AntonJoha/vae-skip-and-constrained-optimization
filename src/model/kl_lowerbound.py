@@ -1,6 +1,7 @@
 import logging
 
 import torch
+
 from experiments.util import SeriesConfig
 
 from .kl_base import KLBaseModel
