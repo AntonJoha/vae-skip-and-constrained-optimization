@@ -245,7 +245,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         x, y = unpack_batch(batch)
 
         mean, logvar, *_ = model(x)
-        #print(logvar)
+
 
         _, _, prior_list, _ = model._latent_pass(x, y=None, prior=True)
         prior_latents.append(_split_layers(prior_list))

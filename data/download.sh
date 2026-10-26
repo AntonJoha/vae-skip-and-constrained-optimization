@@ -1,5 +1,9 @@
 !#/usr/bin/env bash
 
+
+wget https://zenodo.org/records/4656117/files/nn5_daily_dataset_without_missing_values.zip
+unzip nn5_daily_dataset_without_missing_values.zip
+
 wget https://zenodo.org/records/4656626/files/pedestrian_counts_dataset.zip
 unzip pedestrian_counts_dataset.zip
 
@@ -22,3 +26,5 @@ unzip traffic_hourly_dataset.zip
 
 wget https://zenodo.org/records/4656135/files/traffic_weekly_dataset.zip
 unzip traffic_weekly_dataset.zip
+
+
