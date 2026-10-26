@@ -22,10 +22,6 @@ class Model(KLBaseModel):
 
     def __init__(self, config):
 
-        torch.autograd.set_detect_anomaly(True)
-        torch.set_warn_always(True)
-
-
         super().__init__(config)
         self.lambda_ = 0.0
         self.lambda_lr = float(getattr(config, "lr_lambda", self.lambda_lr))

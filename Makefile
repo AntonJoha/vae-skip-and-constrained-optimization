@@ -5,6 +5,8 @@ mid_horizon = 50
 long_horizon = 100
 
 
+_: tune upper lower range vae vae_no_warmup
+
 tune: folder
 	python -m experiments.main --verbose --tune --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_short.log
 	python -m experiments.main --verbose --tune --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_mid.log

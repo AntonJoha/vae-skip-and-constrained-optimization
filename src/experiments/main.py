@@ -478,6 +478,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--range_bound", action="store_true", default=False)
     parser.add_argument("--set_lambda", type=float, default=None)
     parser.add_argument("--lambda_scaler", type=float, default=0.1)
+    parser.add_argument("--vae_no_warmup", action="store_true", default=False)
 
     return parser.parse_args()
 
