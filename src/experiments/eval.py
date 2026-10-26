@@ -245,7 +245,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         x, y = unpack_batch(batch)
 
         mean, logvar, *_ = model(x)
-        print(logvar)
+        #print(logvar)
 
         _, _, prior_list, _ = model._latent_pass(x, y=None, prior=True)
         prior_latents.append(_split_layers(prior_list))
@@ -301,8 +301,13 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
 
     scrambled_loss = evaluate_scrambled(model, loader)
     layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
-    layer_target = model._layer_target(layered_kl)
-    layer_residual = layered_kl - layer_target
+    try:
+        layer_target = model._layer_target(layered_kl)
+        layer_residual = layered_kl - layer_target
+    except:
+        layer_target = None
+        layer_residual = None
+
     return {
         "x": xs,
         "x_scaled": xs_scaled,
@@ -389,7 +394,7 @@ def benchmark_model(args, model_path: Path) -> None:
 
     print(runtime)
     runtime = replace(runtime, output_dim=runtime.horizon)
-    runtime = replace(runtime, batch_size=args.batch_size)
+    #runtime = replace(runtime, batch_size=args.batch_size)
 
     _, _, test_loader = make_dataloaders(runtime)
     scaler = get_scale_constant(runtime)
