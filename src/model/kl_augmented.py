@@ -42,6 +42,12 @@ class Model(KLBaseModel):
     def _layer_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
         return self._layerwise_budget_target(layered_kl)
 
+    def _constraint_multiplier(self, residual: torch.Tensor) -> torch.Tensor:
+        multiplier = self.lambda_.to(residual.device)
+        if self.config.set_lambda is not None:
+            multiplier = multiplier.abs() * residual.detach().sign()
+        return multiplier
+
     def set_epoch(self, epoch: int):
         self.epoch = epoch
         log.info("Epoch %d: KL target set to %.4f", epoch, self.kl_target)
@@ -76,7 +82,7 @@ class Model(KLBaseModel):
         residual = layered_kl - self._layer_target(layered_kl)
 
         kl_constraint = (
-            self.lambda_.to(residual.device) * residual
+            self._constraint_multiplier(residual) * residual
             + 0.5 * self.rho * residual.pow(2)
         ).sum()
         loss = rec + kl_constraint
@@ -118,7 +124,7 @@ class Model(KLBaseModel):
         residual = layered_kl - self._layer_target(layered_kl)
 
         kl_constraint = (
-            self.lambda_.to(residual.device) * residual
+            self._constraint_multiplier(residual) * residual
             + 0.5 * self.rho * residual.pow(2)
         ).sum()
 
