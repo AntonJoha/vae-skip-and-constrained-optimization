@@ -675,12 +675,17 @@ def get_scale_constant(runtime):
         print("MEAN", mean, "STD", std)
 
         return lambda x: x.cpu() * std + mean, lambda x: x.cpu() + 2 * torch.log(std)
-    
-    elif dataset_path.suffix == ".tsf": 
-        return  (
-                lambda x: x,
-                lambda x: x
-                )
+    elif dataset_path.suffix == ".tsf":
+        df, *_ = convert_tsf_to_dataframe(dataset_path)
+        all_values = np.array(
+            [value for series in df["series_value"] for value in series]
+        )
+        mean = float(np.mean(all_values))
+        std = float(np.std(all_values))
+        return (
+            lambda x: x.cpu() * std + mean,
+            lambda x: x.cpu() + 2 * float(np.log(std)),
+        )
 
     else:
         # TODO : Implement scaling for other dataset types
@@ -723,13 +728,16 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
+
         "data/nn5_daily_dataset_without_missing_values.tsf",
         "data/AirQualityUCI.csv",
         "data/solar_4_seconds_dataset.tsf",
         "data/covid_deaths_dataset.tsf",
-        "data/cleaned_weather.csv",
         "data/solar_10_minutes_dataset.tsf",
         "data/eth.ped",
+        "data/AirQualityUCI.csv",
+        "data/solar_4_seconds_dataset.tsf",
+        "data/cleaned_weather.csv",
         "data/cleaned_weather.csv",
         "data/pedestrian_counts_dataset.tsf",
         "data/m1_monthly_dataset.tsf",

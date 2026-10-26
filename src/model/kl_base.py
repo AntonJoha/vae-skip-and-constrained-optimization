@@ -87,14 +87,14 @@ def _make_mlp(
 ) -> nn.Sequential:
     layers: list[nn.Module] = [
         nn.Linear(input_dim, hidden_dim),
-        nn.ReLU(),
+        nn.LeakyReLU(),
     ]
     if dropout:
         layers.append(nn.Dropout(p=dropout))
     layers.extend(
         [
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         ]
     )
     if dropout:

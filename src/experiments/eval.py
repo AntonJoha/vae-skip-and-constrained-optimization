@@ -246,6 +246,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
 
         mean, logvar, *_ = model(x)
 
+
         _, _, prior_list, _ = model._latent_pass(x, y=None, prior=True)
         prior_latents.append(_split_layers(prior_list))
 
@@ -306,6 +307,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     except:
         layer_target = None
         layer_residual = None
+
     return {
         "x": xs,
         "x_scaled": xs_scaled,
@@ -392,7 +394,7 @@ def benchmark_model(args, model_path: Path) -> None:
 
     print(runtime)
     runtime = replace(runtime, output_dim=runtime.horizon)
-    runtime = replace(runtime, batch_size=args.batch_size)
+    #runtime = replace(runtime, batch_size=args.batch_size)
 
     _, _, test_loader = make_dataloaders(runtime)
     scaler = get_scale_constant(runtime)

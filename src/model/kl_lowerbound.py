@@ -60,72 +60,8 @@ class Model(KLBaseModel):
         return self._layerwise_budget_target(layered_kl)
 
     def outer_train_step(self, dataloader):
-        expected_kl = None
-        expected_wasserstein = None
-        latent_mean_diff = None
-        latent_logvar_diff = None
-
-        for x, y in dataloader:
-            x = x.to(self.device)
-            y = y.to(self.device)
-
-            kl = self.get_layered_kl(x, y)
-            wasserstein = self.get_layered_wasserstein(x, y)
-            mean_diff, logvar_diff = self.get_mean_logvar_diff(x, y)
-            if expected_kl is None:
-                expected_kl = kl
-            else:
-                expected_kl += kl
-            if expected_wasserstein is None:
-                expected_wasserstein = wasserstein
-            else:
-                expected_wasserstein += wasserstein
-            if latent_mean_diff is None:
-                latent_mean_diff = mean_diff
-            else:
-                latent_mean_diff += mean_diff
-            if latent_logvar_diff is None:
-                latent_logvar_diff = logvar_diff
-            else:
-                latent_logvar_diff += logvar_diff
-
-        expected_kl /= len(dataloader)
-        expected_wasserstein /= len(dataloader)
-        latent_mean_diff /= len(dataloader)
-        latent_logvar_diff /= len(dataloader)
-
-        residual = self._layer_target(expected_kl) - expected_kl
-        constrain_violation = torch.clamp(residual, min=0.0)
-        if torch.any(
-            constrain_violation
-            > self.reduction_threshold
-            * self.old_violation.to(constrain_violation.device)
-        ).item():
-            self.rho = max(
-                1e-8,
-                self.rho + self.rho_lr * float(constrain_violation.mean().item()),
-            )
-        self.old_violation = constrain_violation
-        
-
-
-        if self.config.set_lambda is None:
-            self.lambda_ = torch.clamp(
-                self.lambda_.to(residual.device) + self.lambda_lr * residual,
-                self.lambda_min,
-                self.lambda_max,
-            )
-
-        log.info(
-            "Outer step: expected KL=%.4f, residual=%.4f, lambda=%s, rho=%.4f, Expected Wasserstein=%.4f, latent mean diff=%.4f, latent logvar diff=%.4f",
-            expected_kl.mean().item(),
-            residual.mean().item(),
-            self.lambda_.cpu().numpy().tolist(),
-            self.rho,
-            expected_wasserstein.mean().item(),
-            latent_mean_diff.mean().item(),
-            latent_logvar_diff.mean().item(),
-        )
+        # lambda and rho are updated every batch in train_step
+        return None
 
     def train_step(
         self,
@@ -175,6 +111,18 @@ class Model(KLBaseModel):
 
         loss.backward()
         middle_optimizer.step()
+
+        dual_lr = middle_optimizer.param_groups[0]["lr"] / 100
+        self.lambda_lr = dual_lr
+        self.rho_lr = dual_lr
+        violation = torch.clamp(residual.detach(), min=0.0)
+        self.rho = max(1e-8, self.rho + self.rho_lr * float(violation.mean().item()))
+        if self.config.set_lambda is None:
+            self.lambda_ = torch.clamp(
+                self.lambda_.to(residual.device) + self.lambda_lr * residual.detach(),
+                self.lambda_min,
+                self.lambda_max,
+            )
 
         return float(loss.detach())
 
