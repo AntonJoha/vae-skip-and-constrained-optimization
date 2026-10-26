@@ -90,7 +90,6 @@ def _make_mlp(
         nn.ReLU(),
     ]
     if dropout:
-        log.info("Using dropout", dropout)
         layers.append(nn.Dropout(p=dropout))
     layers.extend(
         [

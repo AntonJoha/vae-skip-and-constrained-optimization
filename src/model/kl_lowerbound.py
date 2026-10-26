@@ -295,6 +295,7 @@ class Model(KLBaseModel):
             log.info("    %-20s %.6f", group_name, similarity)
 
         prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
+        """
         log.info(
             "  posterior mean=%.6f logvar=%.6f prior mean=%.6f prior logvar=%.6f",
             mean[0][0][0].item(),
@@ -302,3 +303,4 @@ class Model(KLBaseModel):
             prior_mean[0][0][0].item(),
             prior_logvar[0][0][0].item(),
         )
+        """
