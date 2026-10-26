@@ -675,10 +675,16 @@ def get_scale_constant(runtime):
 
         return lambda x: x.cpu() * std + mean, lambda x: x.cpu() + 2 * torch.log(std)
     elif dataset_path.suffix == ".tsf":
+        df, *_ = convert_tsf_to_dataframe(dataset_path)
+        all_values = np.array(
+            [value for series in df["series_value"] for value in series]
+        )
+        mean = float(np.mean(all_values))
+        std = float(np.std(all_values))
         return (
-                lambda x: x,
-                lambda x: x,
-                )
+            lambda x: x.cpu() * std + mean,
+            lambda x: x.cpu() + 2 * float(np.log(std)),
+        )
     else:
         # TODO : Implement scaling for other dataset types
         df = pd.read_csv(dataset_path)
