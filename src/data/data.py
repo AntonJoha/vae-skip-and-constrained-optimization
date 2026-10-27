@@ -348,14 +348,7 @@ def get_tsf_dataset(
         tsf_file_path
     )
 
-    ## normalize data
-    all_values = []
-
-    for row in df["series_value"]:
-        all_values.extend(row)
-    all_values = np.array(all_values)
-    mean = np.mean(all_values)
-    std = np.std(all_values)
+    mean, std = _tsf_get_mean_std(df)
 
     dataset = None
     for row in df["series_value"]:
@@ -378,6 +371,11 @@ def get_tsf_dataset(
             )
 
     return dataset
+
+
+def _tsf_get_mean_std(df):
+    all_values = np.array([value for series in df["series_value"] for value in series])
+    return np.mean(all_values), np.std(all_values)
 
 
 class WindowedSeriesDataset(Dataset):
@@ -536,14 +534,12 @@ def get_ped_dataset(
     reduced_dataset=None,
     seed: int = 42,
 ):
+    mean, std = ped_get_mean_std(ped_file_path)
 
     ped_file_path = ped_file_path.with_suffix("")
-
     ped_train = ped_file_path / "train"
     ped_test = ped_file_path / "test"
     ped_val = ped_file_path / "val"
-
-    mean, std = _ped_get_mean_std(ped_train)
 
     train_dataset = _ped_get_folder(ped_train, context_length, horizon, mean, std)
     test_dataset = _ped_get_folder(ped_test, context_length, horizon, mean, std)
@@ -685,11 +681,7 @@ def get_scale_constant(runtime):
         return lambda x: x.cpu() * std + mean, lambda x: x.cpu() + 2 * torch.log(std)
     elif dataset_path.suffix == ".tsf":
         df, *_ = convert_tsf_to_dataframe(dataset_path)
-        all_values = np.array(
-            [value for series in df["series_value"] for value in series]
-        )
-        mean = float(np.mean(all_values))
-        std = float(np.std(all_values))
+        mean, std = _tsf_get_mean_std(df)
         return (
             lambda x: x.cpu() * std + mean,
             lambda x: x.cpu() + 2 * float(np.log(std)),
