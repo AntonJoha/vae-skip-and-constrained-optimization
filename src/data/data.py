@@ -284,20 +284,29 @@ def get_csv_dataset(
         df.drop(["date"], inplace=True, axis=1)
     if path.name == "toy_dataset.csv":
         df.drop(["time"], inplace=True, axis=1)
+    # Chronological split: train, then validation, then test. The scaler is
+    # fit on the training rows only so no statistics leak from the future.
+    n = len(df)
+    train_end = int(n * train_fraction)
+    val_end = train_end + (n - train_end) // 2
+
     scaler = StandardScaler()
-    df_norm = pd.DataFrame(
-        scaler.fit_transform(df),
-        columns=df.columns,
-        index=df.index,
-    )
+    scaler.fit(df.iloc[:train_end])
+    values = torch.tensor(scaler.transform(df), dtype=torch.float32)
 
-    dataset = WindowedSeriesDataset(
-        torch.tensor(df_norm.values, dtype=torch.float32),
-        seq_len=context_length,
-        horizon=horizon,
-    )
+    # Windows never cross split boundaries, so each split contains only its own timestamps.
+    def _window(start: int, end: int) -> WindowedSeriesDataset:
+        return WindowedSeriesDataset(
+            values[start:end],
+            seq_len=context_length,
+            horizon=horizon,
+        )
 
-    return dataset
+    return (
+        _window(0, train_end),
+        _window(train_end, val_end),
+        _window(val_end, n),
+    )
 
 
 def _reduce_dataset(train_dataset, val_dataset, test_dataset, reduced_dataset, seed):
@@ -339,14 +348,7 @@ def get_tsf_dataset(
         tsf_file_path
     )
 
-    ## normalize data
-    all_values = []
-
-    for row in df["series_value"]:
-        all_values.extend(row)
-    all_values = np.array(all_values)
-    mean = np.mean(all_values)
-    std = np.std(all_values)
+    mean, std = _tsf_get_mean_std(df)
 
     dataset = None
     for row in df["series_value"]:
@@ -369,6 +371,11 @@ def get_tsf_dataset(
             )
 
     return dataset
+
+
+def _tsf_get_mean_std(df):
+    all_values = np.array([value for series in df["series_value"] for value in series])
+    return np.mean(all_values), np.std(all_values)
 
 
 class WindowedSeriesDataset(Dataset):
@@ -527,14 +534,12 @@ def get_ped_dataset(
     reduced_dataset=None,
     seed: int = 42,
 ):
+    mean, std = ped_get_mean_std(ped_file_path)
 
     ped_file_path = ped_file_path.with_suffix("")
-
     ped_train = ped_file_path / "train"
     ped_test = ped_file_path / "test"
     ped_val = ped_file_path / "val"
-
-    mean, std = _ped_get_mean_std(ped_train)
 
     train_dataset = _ped_get_folder(ped_train, context_length, horizon, mean, std)
     test_dataset = _ped_get_folder(ped_test, context_length, horizon, mean, std)
@@ -581,8 +586,6 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
     dataset_path = Path(get_dataset_names()[0])
     print(f"Loading dataset from {dataset_path}")
 
-    dataset = None
-
     if dataset_path.suffix == ".ped":
         return get_ped_dataset(
             dataset_path,
@@ -594,19 +597,9 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
             seed=getattr(config, "seed", 42),
         )
 
-    if dataset_path.suffix == ".tsf":
-        dataset = get_tsf_dataset(
-            dataset_path,
-            config.seq_len,
-            config.horizon,
-            config.batch_size,
-            train_fraction=config.train_fraction,
-            reduced_dataset=config.reduced_dataset,
-            seed=getattr(config, "seed", 42),
-        )
-
     if dataset_path.suffix == ".csv":
-        dataset = get_csv_dataset(
+        # CSV splits are chronological and windowed per split, so no random split here.
+        train_dataset, val_dataset, test_dataset = get_csv_dataset(
             dataset_path,
             config.seq_len,
             config.horizon,
@@ -615,12 +608,23 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
             reduced_dataset=config.reduced_dataset,
             seed=getattr(config, "seed", 42),
         )
+    else:
+        if dataset_path.suffix == ".tsf":
+            dataset = get_tsf_dataset(
+                dataset_path,
+                config.seq_len,
+                config.horizon,
+                config.batch_size,
+                train_fraction=config.train_fraction,
+                reduced_dataset=config.reduced_dataset,
+                seed=getattr(config, "seed", 42),
+            )
 
-    train_dataset, val_dataset, test_dataset = _split_train_val_test(
-        dataset,
-        train_fraction=config.train_fraction,
-        seed=config.seed,
-    )
+        train_dataset, val_dataset, test_dataset = _split_train_val_test(
+            dataset,
+            train_fraction=config.train_fraction,
+            seed=config.seed,
+        )
 
     if config.reduced_dataset is not None:
         train_dataset, val_dataset, test_dataset = _reduce_dataset(
@@ -677,11 +681,7 @@ def get_scale_constant(runtime):
         return lambda x: x.cpu() * std + mean, lambda x: x.cpu() + 2 * torch.log(std)
     elif dataset_path.suffix == ".tsf":
         df, *_ = convert_tsf_to_dataframe(dataset_path)
-        all_values = np.array(
-            [value for series in df["series_value"] for value in series]
-        )
-        mean = float(np.mean(all_values))
-        std = float(np.std(all_values))
+        mean, std = _tsf_get_mean_std(df)
         return (
             lambda x: x.cpu() * std + mean,
             lambda x: x.cpu() + 2 * float(np.log(std)),
@@ -704,8 +704,6 @@ def get_scale_constant(runtime):
             df.drop(["Date", "Time"], axis=1, inplace=True)
             # Replace -200 values with NaN
             df.replace(-200, np.nan, inplace=True)
-            # Forward fill NaN values
-            df.ffill(inplace=True)
             # Replace commas with dots in object columns
             for col in df.columns:
                 if df[col].dtype == "object":
@@ -713,9 +711,12 @@ def get_scale_constant(runtime):
                         df[col].str.replace(",", ".", regex=False),
                         errors="coerce",
                     )
+            # Fill missing values using linear interpolation
+            df.interpolate(method="linear", limit_direction="both", inplace=True)
 
         scaler = StandardScaler()
-        scaler.fit(df)
+        train_end = int(len(df) * runtime.train_fraction)
+        scaler.fit(df.iloc[:train_end])
 
         mean = torch.tensor(scaler.mean_, dtype=torch.float32)
         std = torch.tensor(scaler.scale_, dtype=torch.float32)
