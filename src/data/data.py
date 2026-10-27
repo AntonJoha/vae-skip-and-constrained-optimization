@@ -712,8 +712,6 @@ def get_scale_constant(runtime):
             df.drop(["Date", "Time"], axis=1, inplace=True)
             # Replace -200 values with NaN
             df.replace(-200, np.nan, inplace=True)
-            # Forward fill NaN values
-            df.ffill(inplace=True)
             # Replace commas with dots in object columns
             for col in df.columns:
                 if df[col].dtype == "object":
@@ -721,9 +719,12 @@ def get_scale_constant(runtime):
                         df[col].str.replace(",", ".", regex=False),
                         errors="coerce",
                     )
+            # Fill missing values using linear interpolation
+            df.interpolate(method="linear", limit_direction="both", inplace=True)
 
         scaler = StandardScaler()
-        scaler.fit(df)
+        train_end = int(len(df) * runtime.train_fraction)
+        scaler.fit(df.iloc[:train_end])
 
         mean = torch.tensor(scaler.mean_, dtype=torch.float32)
         std = torch.tensor(scaler.scale_, dtype=torch.float32)
