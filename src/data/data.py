@@ -284,20 +284,29 @@ def get_csv_dataset(
         df.drop(["date"], inplace=True, axis=1)
     if path.name == "toy_dataset.csv":
         df.drop(["time"], inplace=True, axis=1)
+    # Chronological split: train, then validation, then test. The scaler is
+    # fit on the training rows only so no statistics leak from the future.
+    n = len(df)
+    train_end = int(n * train_fraction)
+    val_end = train_end + (n - train_end) // 2
+
     scaler = StandardScaler()
-    df_norm = pd.DataFrame(
-        scaler.fit_transform(df),
-        columns=df.columns,
-        index=df.index,
-    )
+    scaler.fit(df.iloc[:train_end])
+    values = torch.tensor(scaler.transform(df), dtype=torch.float32)
 
-    dataset = WindowedSeriesDataset(
-        torch.tensor(df_norm.values, dtype=torch.float32),
-        seq_len=context_length,
-        horizon=horizon,
-    )
+    # Windows never cross split boundaries, so each split contains only its own timestamps.
+    def _window(start: int, end: int) -> WindowedSeriesDataset:
+        return WindowedSeriesDataset(
+            values[start:end],
+            seq_len=context_length,
+            horizon=horizon,
+        )
 
-    return dataset
+    return (
+        _window(0, train_end),
+        _window(train_end, val_end),
+        _window(val_end, n),
+    )
 
 
 def _reduce_dataset(train_dataset, val_dataset, test_dataset, reduced_dataset, seed):
@@ -581,8 +590,6 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
     dataset_path = Path(get_dataset_names()[0])
     print(f"Loading dataset from {dataset_path}")
 
-    dataset = None
-
     if dataset_path.suffix == ".ped":
         return get_ped_dataset(
             dataset_path,
@@ -594,19 +601,9 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
             seed=getattr(config, "seed", 42),
         )
 
-    if dataset_path.suffix == ".tsf":
-        dataset = get_tsf_dataset(
-            dataset_path,
-            config.seq_len,
-            config.horizon,
-            config.batch_size,
-            train_fraction=config.train_fraction,
-            reduced_dataset=config.reduced_dataset,
-            seed=getattr(config, "seed", 42),
-        )
-
     if dataset_path.suffix == ".csv":
-        dataset = get_csv_dataset(
+        # CSV splits are chronological and windowed per split, so no random split here.
+        train_dataset, val_dataset, test_dataset = get_csv_dataset(
             dataset_path,
             config.seq_len,
             config.horizon,
@@ -615,12 +612,23 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
             reduced_dataset=config.reduced_dataset,
             seed=getattr(config, "seed", 42),
         )
+    else:
+        if dataset_path.suffix == ".tsf":
+            dataset = get_tsf_dataset(
+                dataset_path,
+                config.seq_len,
+                config.horizon,
+                config.batch_size,
+                train_fraction=config.train_fraction,
+                reduced_dataset=config.reduced_dataset,
+                seed=getattr(config, "seed", 42),
+            )
 
-    train_dataset, val_dataset, test_dataset = _split_train_val_test(
-        dataset,
-        train_fraction=config.train_fraction,
-        seed=config.seed,
-    )
+        train_dataset, val_dataset, test_dataset = _split_train_val_test(
+            dataset,
+            train_fraction=config.train_fraction,
+            seed=config.seed,
+        )
 
     if config.reduced_dataset is not None:
         train_dataset, val_dataset, test_dataset = _reduce_dataset(
