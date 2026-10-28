@@ -234,7 +234,7 @@ def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
             wasserstein2_distance_score = model.compute_wasserstein_distance(x, y_temp)
             if wasserstein2_distance_score > 1000 or wasserstein2_distance_score  == torch.nan:
                 model.compute_wasserstein_distance_log(x, y_temp)
-            total_wasserstein2_distance_score += wasserstein2_distance_score.item()/(times )
+            total_wasserstein2_distance_score += wasserstein2_distance_score.item()
             count += 1
     return total_wasserstein2_distance_score / count
 
