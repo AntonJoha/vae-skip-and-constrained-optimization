@@ -306,7 +306,7 @@ class KLBaseModel(nn.Module):
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 
 
-    def compute_wasserstein_loss(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
+    def compute_wasserstein_distance(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
 
         prior_samples, posterior_samples = self.get_latent_samples(x, y)
         wasserstein_loss = 0.0

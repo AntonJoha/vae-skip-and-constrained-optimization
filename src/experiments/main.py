@@ -116,7 +116,7 @@ def evaluate_wasserstein(model, loader: DataLoader) -> float:
         if random.random() < 0.9:
             continue  # Skip 90% of the batches to reduce computation
         x, y = unpack_batch(batch)
-        t_wasserstein_loss = model.compute_wasserstein_loss(x, y)
+        t_wasserstein_loss = model.compute_wasserstein_distance(x, y)
         wasserstein_losses.append(t_wasserstein_loss)
     model.train()
     return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
