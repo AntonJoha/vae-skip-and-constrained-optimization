@@ -194,9 +194,11 @@ class KLBaseModel(nn.Module):
         return mean + eps * std
 
     def _clamp_logvar(self, logvar: torch.Tensor) -> torch.Tensor:
+        
         if self.logvar_clamp is None:
             return logvar
         lower, upper = self.logvar_clamp
+        print("lower", lower, "upper", upper)
         return torch.clamp(logvar, lower, upper)
 
     def _combine_gaussians(
@@ -306,6 +308,35 @@ class KLBaseModel(nn.Module):
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 
 
+
+    def compute_wasserstein_distance_log(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
+
+        prior_samples, posterior_samples = self.get_latent_samples(x, y)
+        wasserstein_loss = 0.0
+
+        for _ in range(num_projections):
+            projection = torch.randn(prior_samples[0].shape[-1], device=x.device)
+            projection /= torch.norm(projection)
+            print("Projection: ", projection)
+
+            prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
+            posterior_proj = [torch.matmul(sample, projection) for sample in posterior_samples]
+
+            print("Prior proj", prior_proj)
+            print("Posterior proj", posterior_proj)
+
+            prior_proj_sorted = [torch.sort(proj)[0] for proj in prior_proj]
+            posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
+
+            wass = sum(
+                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+            )/num_projections
+            wasserstein_loss += wass
+            print("Wasser", wass)
+        return wasserstein_loss
+
+
+
     def compute_wasserstein_distance(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
 
         prior_samples, posterior_samples = self.get_latent_samples(x, y)
@@ -321,15 +352,38 @@ class KLBaseModel(nn.Module):
             prior_proj_sorted = [torch.sort(proj)[0] for proj in prior_proj]
             posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
 
-            wasserstein_loss += sum(
+            wass = sum(
                 torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
             )/num_projections
+            if wass > 100:
+                print("Projection: ", projection)
+                
+                print("Prior: ", prior_samples)
+                print("Posterior: ", posterior_samples)
+                prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
+                posterior_proj = [torch.matmul(sample, projection) for sample in posterior_samples]
+
+                print("Prior proj", prior_proj)
+                print("Posterior proj", posterior_proj)
+
+                prior_proj_sorted = [torch.sort(proj)[0] for proj in prior_proj]
+                posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
+
+                wass = sum(
+                    torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                )/num_projections
+                print("Wasser", wass)
+                exit()
+
+            wasserstein_loss += wass
         return wasserstein_loss
 
 
     def get_latent_samples(
         self, x: torch.Tensor, y: torch.Tensor
     ):
+        old = self.logvar_clamp
+        self.logvar_clamp = (-10,2)
         posterior_list: list[torch.Tensor] = []
         combined_posterior_list: list[torch.Tensor] = []
 
@@ -354,6 +408,11 @@ class KLBaseModel(nn.Module):
             old_state = prior_state
             prior_state = layer(prior_state)
             mean, logvar = prior_state.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(logvar)
+            print("Here")
+            print("Here")
+            print("Here")
+            print("Prior layer, ", i, " Mean: ", mean, "\nlogvar: ", logvar)
             prior_list.append(self._reparametrize(mean, logvar))
 
             posterior = posterior_list[i]
@@ -370,7 +429,8 @@ class KLBaseModel(nn.Module):
 
             if self.skip_connection:
                 prior_state = prior_state + self.skip_weights[i] * old_state
-
+        
+        self.logvar_clamp = old
         return prior_list, combined_posterior_list
 
 

@@ -231,8 +231,14 @@ def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
             y_temp = mean + torch.randn_like(mean) * logvar.exp().sqrt()
             y_temp = y_temp.unsqueeze(-1) if y_temp.ndim == 2 else y_temp
             print("y_temp shape: ", y_temp.shape, "y shape: ", y.shape)
-
+            
             wasserstein2_distance_score = model.compute_wasserstein_distance(x, y_temp)
+            print(wasserstein2_distance_score )
+            if wasserstein2_distance_score > 1000 or wasserstein2_distance_score  == torch.nan:
+                model.compute_wasserstein_distance_log(x, y_temp)
+                print("y_temp: ", y_temp)
+                print("x: ", x)
+                print("y: ", y)
             total_wasserstein2_distance_score += wasserstein2_distance_score.item()/(times )
             count += 1
     return total_wasserstein2_distance_score / count
@@ -262,6 +268,8 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
     prior_latents, posterior_latents = [], []
     layered_kl_losses = []
+
+    wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
     for batch in loader:
         x, y = unpack_batch(batch)
 
@@ -329,7 +337,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         layer_target = None
         layer_residual = None
 
-    wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
 
     return {
         "x": xs,
@@ -418,7 +425,7 @@ def benchmark_model(args, model_path: Path) -> None:
 
     print(runtime)
     runtime = replace(runtime, output_dim=runtime.horizon)
-    #runtime = replace(runtime, batch_size=args.batch_size)
+    runtime = replace(runtime, batch_size=args.batch_size)
 
     _, _, test_loader = make_dataloaders(runtime)
     scaler = get_scale_constant(runtime)
