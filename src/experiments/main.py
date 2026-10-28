@@ -109,6 +109,17 @@ def evaluate_scrabbled(model, loader: DataLoader) -> float:
     return sum(losses) / max(1, len(losses))
 
 
+def evaluate_wasserstein(model, loader: DataLoader) -> float:
+    model.eval()
+    wasserstein_losses = []
+    for batch in loader:
+        x, y = unpack_batch(batch)
+        t_wasserstein_loss = model.compute_wasserstein_loss(x, y)
+        wasserstein_losses.append(t_wasserstein_loss)
+    model.train()
+    return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
+
+
 @torch.no_grad()
 def evaluate_kl(model, loader: DataLoader) -> float:
     model.eval()
@@ -269,6 +280,7 @@ def train_model(
                         break
 
                 model.print_gradients(x_t, y_t)
+
             if runtime.scrabbled_y:
                 scrabbled_val_loss = evaluate_scrabbled(model, val_loader)
                 scrabbled_train_loss = evaluate_scrabbled(model, train_loader)
@@ -276,6 +288,13 @@ def train_model(
                     " Scrabbled NLL on train: %.5f, Scrabbled NLL on val: %.5f",
                     scrabbled_train_loss,
                     scrabbled_val_loss,
+                )
+                wasserstein_val_loss = evaluate_wasserstein(model, val_loader)
+                wasserstein_train_loss = evaluate_wasserstein(model, train_loader)
+                log.info(
+                    " Wasserstein on train: %.5f, Wasserstein on val: %.5f",
+                    wasserstein_train_loss,
+                    wasserstein_val_loss,
                 )
 
         if reason := should_stop_training(before, val_loss):
