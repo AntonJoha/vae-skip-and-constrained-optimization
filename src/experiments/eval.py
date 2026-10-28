@@ -227,18 +227,13 @@ def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
         x, y = unpack_batch(batch)
 
         for _ in range(times):
-            mean, logvar, *_ = model(x)
+            mean, logvar, *_ = model._latent_pass(x, y)
             y_temp = mean + torch.randn_like(mean) * logvar.exp().sqrt()
             y_temp = y_temp.unsqueeze(-1) if y_temp.ndim == 2 else y_temp
-            print("y_temp shape: ", y_temp.shape, "y shape: ", y.shape)
             
             wasserstein2_distance_score = model.compute_wasserstein_distance(x, y_temp)
-            print(wasserstein2_distance_score )
             if wasserstein2_distance_score > 1000 or wasserstein2_distance_score  == torch.nan:
                 model.compute_wasserstein_distance_log(x, y_temp)
-                print("y_temp: ", y_temp)
-                print("x: ", x)
-                print("y: ", y)
             total_wasserstein2_distance_score += wasserstein2_distance_score.item()/(times )
             count += 1
     return total_wasserstein2_distance_score / count
