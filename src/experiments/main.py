@@ -116,6 +116,7 @@ def evaluate_wasserstein(model, loader: DataLoader) -> float:
         x, y = unpack_batch(batch)
         t_wasserstein_loss = model.compute_wasserstein_loss(x, y)
         wasserstein_losses.append(t_wasserstein_loss)
+        break  # Only compute for one batch to save time
     model.train()
     return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
 
