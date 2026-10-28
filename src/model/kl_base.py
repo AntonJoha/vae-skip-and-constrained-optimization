@@ -194,6 +194,7 @@ class KLBaseModel(nn.Module):
         return mean + eps * std
 
     def _clamp_logvar(self, logvar: torch.Tensor) -> torch.Tensor:
+        
         if self.logvar_clamp is None:
             return logvar
         lower, upper = self.logvar_clamp
@@ -305,6 +306,128 @@ class KLBaseModel(nn.Module):
         pred_logvar = self._to_output_shape(logvar)
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 
+
+
+    def compute_wasserstein_distance_log(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
+
+        prior_samples, posterior_samples = self.get_latent_samples(x, y)
+        wasserstein_loss = 0.0
+
+        for _ in range(num_projections):
+            projection = torch.randn(prior_samples[0].shape[-1], device=x.device)
+            projection /= torch.norm(projection)
+
+            prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
+            posterior_proj = [torch.matmul(sample, projection) for sample in posterior_samples]
+
+
+            prior_proj_sorted = [torch.sort(proj)[0] for proj in prior_proj]
+            posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
+
+            wass = sum(
+                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+            )/num_projections
+            wasserstein_loss += wass
+        return wasserstein_loss
+
+
+
+    def compute_wasserstein_distance(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
+
+        prior_samples, posterior_samples = self.get_latent_samples(x, y)
+        wasserstein_loss = 0.0
+
+        for _ in range(num_projections):
+            projection = torch.randn(prior_samples[0].shape[-1], device=x.device)
+            projection /= torch.norm(projection)
+
+            prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
+            posterior_proj = [torch.matmul(sample, projection) for sample in posterior_samples]
+
+            prior_proj_sorted = [torch.sort(proj)[0] for proj in prior_proj]
+            posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
+
+            wass = sum(
+                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+            )/num_projections
+            if wass > 100:
+                print("Projection: ", projection)
+                
+                print("Prior: ", prior_samples)
+                print("Posterior: ", posterior_samples)
+                prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
+                posterior_proj = [torch.matmul(sample, projection) for sample in posterior_samples]
+
+                print("Prior proj", prior_proj)
+                print("Posterior proj", posterior_proj)
+
+                prior_proj_sorted = [torch.sort(proj)[0] for proj in prior_proj]
+                posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
+
+                wass = sum(
+                    torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                )/num_projections
+                print("Wasser", wass)
+                exit()
+
+            wasserstein_loss += wass
+        return wasserstein_loss
+
+
+    def get_latent_samples(
+        self, x: torch.Tensor, y: torch.Tensor
+    ):
+        old = self.logvar_clamp
+        self.logvar_clamp = (-10,2)
+        posterior_list: list[torch.Tensor] = []
+        combined_posterior_list: list[torch.Tensor] = []
+
+        y_full = torch.cat([x, y], dim=1)
+        posterior = self._encode_state(self.posterior_state, y_full)
+
+        if self.posterior_layers is None or len(self.posterior_layers) == 0:
+            raise ValueError("Posterior layers are not defined or empty.")
+
+        for layer in self.posterior_layers:
+            posterior = layer(posterior)
+            posterior_list.append(posterior)
+            mean, logvar = posterior.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(logvar)
+            posterior = self._reparametrize(mean, logvar)
+        if self._should_reverse_posterior():
+            posterior_list.reverse()
+
+        prior_state = self._encode_state(self.prior_state, x)
+        prior_list: list[torch.Tensor] = []
+        for i, layer in enumerate(self.prior_layers):
+            old_state = prior_state
+            prior_state = layer(prior_state)
+            mean, logvar = prior_state.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(logvar)
+            prior_list.append(self._reparametrize(mean, logvar))
+
+            posterior = posterior_list[i]
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+            p_mean, p_logvar = prior_state.chunk(2, dim=-1)
+            q_logvar = self._clamp_logvar(q_logvar)
+            p_logvar = self._clamp_logvar(p_logvar)
+            mean, logvar = self._combine_gaussians(
+                q_mean, q_logvar, p_mean, p_logvar
+            )
+            logvar = self._clamp_logvar(logvar)
+            prior_state = self._reparametrize(mean, logvar)
+            combined_posterior_list.append(prior_state)
+
+            if self.skip_connection:
+                prior_state = prior_state + self.skip_weights[i] * old_state
+        
+        self.logvar_clamp = old
+        return prior_list, combined_posterior_list
+
+
+
+
+
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         mean, logvar, *_ = self._latent_pass(x, y=None, prior=True)
         return mean, logvar
@@ -399,27 +522,6 @@ class KLBaseModel(nn.Module):
         return self._layered_kl(prior_list, combined_posterior_list).detach()
 
     @torch.no_grad()
-    def get_layered_wasserstein(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
-        wasserstein_losses = []
-        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-            wasserstein = (
-                (
-                    (p_mean - q_mean).pow(2)
-                    + (
-                        torch.sqrt(torch.exp(p_logvar))
-                        - torch.sqrt(torch.exp(q_logvar))
-                    ).pow(2)
-                )
-                .sum(dim=-1)
-                .mean()
-            )
-            wasserstein_losses.append(wasserstein.item())
-        return torch.tensor(wasserstein_losses, device=x.device)
-
-    @torch.no_grad()
     def get_mean_logvar_diff(
         self, x: torch.Tensor, y: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -502,10 +604,10 @@ class KLBaseModel(nn.Module):
         groups = self._parameter_groups()
         result = {}
         for group_name, parameters in groups.items():
-            result[group_name] = self.__gradient_cosine(loss1, loss2, parameters)
+            result[group_name] = self._gradient_cosine(loss1, loss2, parameters)
         return result
 
-    def __gradient_cosine(self, loss1, loss2, parameters):
+    def _gradient_cosine(self, loss1, loss2, parameters):
         parameters = [p for p in parameters if p.requires_grad]
         grads1 = torch.autograd.grad(
             loss1,

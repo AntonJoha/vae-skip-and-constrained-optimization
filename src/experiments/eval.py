@@ -9,7 +9,7 @@ from pathlib import Path
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-
+import random
 from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
 from experiments.main import unpack_batch
@@ -217,6 +217,28 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
 
 
 @torch.no_grad()
+def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
+    model.eval()
+    count = 0
+    total_wasserstein2_distance_score = 0.0
+    for batch in loader:
+        if count > 0 and random.random() > 0.1:
+            continue
+        x, y = unpack_batch(batch)
+
+        for _ in range(times):
+            mean, logvar, *_ = model._latent_pass(x, y)
+            y_temp = mean + torch.randn_like(mean) * logvar.exp().sqrt()
+            y_temp = y_temp.unsqueeze(-1) if y_temp.ndim == 2 else y_temp
+            
+            wasserstein2_distance_score = model.compute_wasserstein_distance(x, y_temp)
+            if wasserstein2_distance_score > 1000 or wasserstein2_distance_score  == torch.nan:
+                model.compute_wasserstein_distance_log(x, y_temp)
+            total_wasserstein2_distance_score += wasserstein2_distance_score.item()
+            count += 1
+    return total_wasserstein2_distance_score / count
+
+@torch.no_grad()
 def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     logger.info("Evaluating tDLGM model...")
 
@@ -241,6 +263,8 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
     prior_latents, posterior_latents = [], []
     layered_kl_losses = []
+
+    wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
     for batch in loader:
         x, y = unpack_batch(batch)
 
@@ -308,6 +332,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         layer_target = None
         layer_residual = None
 
+
     return {
         "x": xs,
         "x_scaled": xs_scaled,
@@ -356,6 +381,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "fde_losses": fde_losses,
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
         "scrambled_loss": scrambled_loss,
+        "wasserstein2_distance_score": wasserstein2_distance_score,
     }
 
 
@@ -394,7 +420,7 @@ def benchmark_model(args, model_path: Path) -> None:
 
     print(runtime)
     runtime = replace(runtime, output_dim=runtime.horizon)
-    #runtime = replace(runtime, batch_size=args.batch_size)
+    runtime = replace(runtime, batch_size=args.batch_size)
 
     _, _, test_loader = make_dataloaders(runtime)
     scaler = get_scale_constant(runtime)
@@ -430,10 +456,8 @@ def benchmark_model(args, model_path: Path) -> None:
     print(
         f"Test ADE Position Loss: {res['ade_loss_position']:.5f}, Test FDE Position Loss: {res['fde_loss_position']:.5f}, Test ADE Loss: {res['ade_loss']:.5f}, Test FDE Loss: {res['fde_loss']:.5f}"
     )
-    print(
-        f"Wasserstein-2 Distance: {res['wasserstein2_loss']:.5f}, Wasserstein-2 Similarity: {res['wasserstein2_similarity']:.5f}"
-    )
     print("Scrambled Loss: ", res["scrambled_loss"])
+    print("wasserstein2_distance_score: ", res["wasserstein2_distance_score"])
 
     return remove_pytorch(res)
 
