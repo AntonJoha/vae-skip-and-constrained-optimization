@@ -109,6 +109,7 @@ def evaluate_scrabbled(model, loader: DataLoader) -> float:
     return sum(losses) / max(1, len(losses))
 
 
+@torch.no_grad()
 def evaluate_wasserstein(model, loader: DataLoader) -> float:
     model.eval()
     wasserstein_losses = []
