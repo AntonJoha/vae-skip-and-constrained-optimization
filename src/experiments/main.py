@@ -12,7 +12,7 @@ import torch.nn as nn
 from optuna.exceptions import TrialPruned
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-
+import random
 from data.data import make_dataloaders
 from experiments.util import (
     SeriesConfig,
@@ -113,10 +113,11 @@ def evaluate_wasserstein(model, loader: DataLoader) -> float:
     model.eval()
     wasserstein_losses = []
     for batch in loader:
+        if random.random() < 0.9:
+            continue  # Skip 90% of the batches to reduce computation
         x, y = unpack_batch(batch)
         t_wasserstein_loss = model.compute_wasserstein_loss(x, y)
         wasserstein_losses.append(t_wasserstein_loss)
-        break  # Only compute for one batch to save time
     model.train()
     return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
 
