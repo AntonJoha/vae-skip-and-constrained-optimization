@@ -222,7 +222,7 @@ def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
     count = 0
     total_wasserstein2_distance_score = 0.0
     for batch in loader:
-        if random.random() > 0.1:
+        if count > 0 and random.random() > 0.1:
             continue
         x, y = unpack_batch(batch)
 
