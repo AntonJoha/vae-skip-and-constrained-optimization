@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 import random
 from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
-from experiments.main import unpack_batch
+from experiments.main import unpack_batch, evaluate_generalized_wasserstein
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
 from model import (
     Inner_Reg_Model,
@@ -382,6 +382,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
         "scrambled_loss": scrambled_loss,
         "wasserstein2_distance_score": wasserstein2_distance_score,
+        "generalized_wasserstein_distance_score": evaluate_generalized_wasserstein(model, loader),
     }
 
 

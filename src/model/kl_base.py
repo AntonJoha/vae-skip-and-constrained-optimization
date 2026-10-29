@@ -19,6 +19,29 @@ def _resolve_num_heads(hidden_dim: int) -> int:
     return 1
 
 
+class GSWDefiningFunction(nn.Module):
+    """Learned nonlinear defining function g(theta, z) -> R for generalized sliced Wasserstein."""
+
+    def __init__(self, dim: int, hidden_dim: int = 64):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(2 * dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, theta: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+        # theta: (P, D), z: (..., D) -> (P, ...). tanh bounds the output so maximising over parameters stays well-posed.
+        num_projections = theta.shape[0]
+        z_exp = z.unsqueeze(0).expand(num_projections, *z.shape)
+        theta_shape = (num_projections,) + (1,) * (z.ndim - 1) + (theta.shape[-1],)
+        theta_exp = theta.reshape(theta_shape).expand_as(z_exp)
+        out = self.net(torch.cat([theta_exp, z_exp], dim=-1)).squeeze(-1)
+        return torch.tanh(out)
+
+
 class SequenceRNNEncoder(nn.Module):
     def __init__(
         self,
@@ -372,6 +395,49 @@ class KLBaseModel(nn.Module):
 
             wasserstein_loss += wass
         return wasserstein_loss
+
+    def _gsw_distance(
+        self,
+        defining_fn: GSWDefiningFunction,
+        theta: torch.Tensor,
+        prior_samples: list[torch.Tensor],
+        posterior_samples: list[torch.Tensor],
+    ) -> torch.Tensor:
+        total = 0.0
+        for prior, posterior in zip(prior_samples, posterior_samples):
+            prior_proj = torch.sort(defining_fn(theta, prior), dim=-1)[0]
+            posterior_proj = torch.sort(defining_fn(theta, posterior), dim=-1)[0]
+            total = total + torch.mean((prior_proj - posterior_proj) ** 2)
+        return total
+
+    def compute_generalized_sliced_wasserstein_distance(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        num_projections: int = 100,
+        num_steps: int = 50,
+        lr: float = 1e-3,
+    ) -> torch.Tensor:
+        """Generalized sliced Wasserstein (Kolouri et al.) with an adversarially trained defining function."""
+        prior_samples, posterior_samples = self.get_latent_samples(x, y)
+        prior_samples = [sample.detach() for sample in prior_samples]
+        posterior_samples = [sample.detach() for sample in posterior_samples]
+
+        dim = prior_samples[0].shape[-1]
+        defining_fn = GSWDefiningFunction(dim).to(x.device)
+        optimizer = torch.optim.Adam(defining_fn.parameters(), lr=lr)
+        theta = torch.randn(num_projections, dim, device=x.device)
+        theta = theta / torch.norm(theta, dim=-1, keepdim=True)
+
+        with torch.enable_grad():
+            for _ in range(num_steps):
+                optimizer.zero_grad()
+                objective = -self._gsw_distance(defining_fn, theta, prior_samples, posterior_samples)
+                objective.backward()
+                optimizer.step()
+
+        with torch.no_grad():
+            return self._gsw_distance(defining_fn, theta, prior_samples, posterior_samples)
 
 
     def get_latent_samples(
