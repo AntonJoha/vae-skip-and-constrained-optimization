@@ -399,23 +399,25 @@ class KLBaseModel(nn.Module):
 
         model = torch.nn.Linear(self.config.hidden_dim, 1, bias=False).to(self.device) ## we choose a linear model as g(,\theta)
         optimizer= torch.optim.Adam(model.parameters(), lr=lr)
-        x = x.to(self.device)
-        y = y.to(self.device)
+        x = _x.to(self.device)
+        y = _y.to(self.device)
 
 
         samples = []
         for _ in range(num_projections):
             samples.append(self.get_latent_samples(x, y))
 
+        prior_samples = torch.cat([d for d, _ in samples], dim=0)
+        posterior_samples = torch.cat([d for _, d in samples], dim=0)
+
         for _ in range(num_steps):
-            for prior_samples, posterior_samples in samples:
-                optimizer.zero_grad()
-                loss = -self._gsw_distance(
-                    projection_fn=model, prior_samples=prior_samples, posterior_samples=posterior_samples
-                )
-                loss.backward()
-                optimizer.step()
-                model.weight.data /= torch.norm(model.weight.data)  # normalize the weight vector
+            optimizer.zero_grad()
+            loss = -self._gsw_distance(
+                projection_fn=model, prior_samples=prior_samples, posterior_samples=posterior_samples
+            )
+            loss.backward()
+            optimizer.step()
+            model.weight.data /= torch.norm(model.weight.data)  # normalize the weight vector
         
         to_return = torch.Tensor([0.0]).to(self.device)
         for prior_samples, posterior_samples in samples:
