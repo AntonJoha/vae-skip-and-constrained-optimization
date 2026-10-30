@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 import random
 from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
-from experiments.main import unpack_batch
+from experiments.main import unpack_batch, evaluate_generalized_wasserstein
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
 from model import (
     Inner_Reg_Model,
@@ -219,6 +219,7 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
 @torch.no_grad()
 def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
     model.eval()
+    return 0
     count = 0
     total_wasserstein2_distance_score = 0.0
     for batch in loader:
@@ -238,7 +239,6 @@ def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
             count += 1
     return total_wasserstein2_distance_score / count
 
-@torch.no_grad()
 def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     logger.info("Evaluating tDLGM model...")
 
@@ -264,6 +264,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     prior_latents, posterior_latents = [], []
     layered_kl_losses = []
 
+    gen = evaluate_generalized_wasserstein(model, loader)
     wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
     for batch in loader:
         x, y = unpack_batch(batch)
@@ -382,6 +383,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
         "scrambled_loss": scrambled_loss,
         "wasserstein2_distance_score": wasserstein2_distance_score,
+        "generalized_wasserstein_distance_score": gen,
     }
 
 
@@ -458,6 +460,7 @@ def benchmark_model(args, model_path: Path) -> None:
     )
     print("Scrambled Loss: ", res["scrambled_loss"])
     print("wasserstein2_distance_score: ", res["wasserstein2_distance_score"])
+    print("Generalised slized wasserstein", res["generalized_wasserstein_distance_score"])
 
     return remove_pytorch(res)
 

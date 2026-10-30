@@ -123,6 +123,24 @@ def evaluate_wasserstein(model, loader: DataLoader) -> float:
     return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
 
 
+def evaluate_generalized_wasserstein(model, loader: DataLoader) -> float:
+    model.eval()
+    gsw_losses = []
+    count = 1
+    log.info("START")
+    for batch in loader:
+        if random.random() < 0.9:
+            continue  # Skip 90% of the batches to reduce computation
+        x, y = unpack_batch(batch)
+        loss = model.compute_generalized_sliced_wasserstein_distance(x, y)
+        log.info(loss)
+        gsw_losses.append(float(loss.item()))
+        log.info(f"Count {count}")
+        count += 1
+    model.train()
+    return sum(gsw_losses) / max(1, len(gsw_losses))
+
+
 @torch.no_grad()
 def evaluate_kl(model, loader: DataLoader) -> float:
     model.eval()
@@ -298,6 +316,13 @@ def train_model(
                     " Wasserstein on train: %.5f, Wasserstein on val: %.5f",
                     wasserstein_train_loss,
                     wasserstein_val_loss,
+                )
+                gsw_val_loss = evaluate_generalized_wasserstein(model, val_loader)
+                gsw_train_loss = evaluate_generalized_wasserstein(model, train_loader)
+                log.info(
+                    " Generalized Wasserstein on train: %.5f, Generalized Wasserstein on val: %.5f",
+                    gsw_train_loss,
+                    gsw_val_loss,
                 )
 
         if reason := should_stop_training(before, val_loss):
