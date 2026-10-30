@@ -123,15 +123,20 @@ def evaluate_wasserstein(model, loader: DataLoader) -> float:
     return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
 
 
-@torch.no_grad()
 def evaluate_generalized_wasserstein(model, loader: DataLoader) -> float:
     model.eval()
     gsw_losses = []
+    count = 1
+    log.info("START")
     for batch in loader:
         if random.random() < 0.9:
             continue  # Skip 90% of the batches to reduce computation
         x, y = unpack_batch(batch)
-        gsw_losses.append(float(model.compute_generalized_sliced_wasserstein_distance(x, y)))
+        loss = model.compute_generalized_sliced_wasserstein_distance(x, y)
+        log.info(loss)
+        gsw_losses.append(float(loss.item()))
+        log.info(f"Count {count}")
+        count += 1
     model.train()
     return sum(gsw_losses) / max(1, len(gsw_losses))
 
