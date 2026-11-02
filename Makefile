@@ -5,40 +5,40 @@ mid_horizon = 50
 long_horizon = 100
 
 
-_: tune upper lower range vae vae_no_warmup
+_: tune  upper vae lower vae_no_warmup
 
 tune: folder
-	python -m experiments.main --verbose --tune --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_short.log
-	python -m experiments.main --verbose --tune --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_mid.log
-	python -m experiments.main --verbose --tune --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_long.log
+	#python -m experiments.main --verbose --tune --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_short.log
+	#python -m experiments.main --verbose --tune --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_mid.log
+	#python -m experiments.main --verbose --tune --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_long.log
 
 
 upper: folder
-	python -m experiments.main --verbose --tune --upper --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_short.log
-	python -m experiments.main --verbose --tune --upper --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_mid.log
-	python -m experiments.main --verbose --tune --upper --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_long.log
+	#python -m experiments.main --verbose --tune --upper --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_short.log
+	#python -m experiments.main --verbose --tune --upper --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_mid.log
+	#python -m experiments.main --verbose --tune --upper --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_long.log
 
 lower: folder
-	python -m experiments.main --verbose --tune --lower --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_short.log
-	python -m experiments.main --verbose --tune --lower --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_mid.log
-	python -m experiments.main --verbose --tune --lower --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_long.log
+	#python -m experiments.main --verbose --tune --lower --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_short.log
+	#python -m experiments.main --verbose --tune --lower --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_mid.log
+	#python -m experiments.main --verbose --tune --lower --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_long.log
 
 
 range: folder
-	python -m experiments.main --verbose --tune --range --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/range/range_short.log
-	python -m experiments.main --verbose --tune --range --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/range/range_mid.log
-	python -m experiments.main --verbose --tune --range --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/range/range_long.log
+	#python -m experiments.main --verbose --tune --range --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/range/range_short.log
+	#python -m experiments.main --verbose --tune --range --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/range/range_mid.log
+	#python -m experiments.main --verbose --tune --range --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/range/range_long.log
 
 
 vae: folder
-	python -m experiments.main --verbose --tune --vae_baseline --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae/vae_short.log
+	#python -m experiments.main --verbose --tune --vae_baseline --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae/vae_short.log
 	python -m experiments.main --verbose --tune --vae_baseline --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae/vae_mid.log
-	python -m experiments.main --verbose --tune --vae_baseline --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae/vae_long.log
+	#python -m experiments.main --verbose --tune --vae_baseline --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae/vae_long.log
 
 vae_no_warmup: folder
-	python -m experiments.main --verbose --tune --vae_baseline --vae_no_warmup --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae_no_warmup/vae_no_warmup_short.log
-	python -m experiments.main --verbose --tune --vae_baseline --vae_no_warmup --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae_no_warmup/vae_no_warmup_mid.log
-	python -m experiments.main --verbose --tune --vae_baseline --vae_no_warmup --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae_no_warmup/vae_no_warmup_long.log
+	#python -m experiments.main --verbose --tune --vae_baseline --vae_no_warmup --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae_no_warmup/vae_no_warmup_short.log
+	#python -m experiments.main --verbose --tune --vae_baseline --vae_no_warmup --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae_no_warmup/vae_no_warmup_mid.log
+	#python -m experiments.main --verbose --tune --vae_baseline --vae_no_warmup --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/vae_no_warmup/vae_no_warmup_long.log
 
 folder:
 	mkdir -p results/tune
