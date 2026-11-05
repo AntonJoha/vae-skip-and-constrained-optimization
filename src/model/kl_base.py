@@ -385,7 +385,6 @@ class KLBaseModel(nn.Module):
             posterior = _posterior.detach()
             prior_proj = torch.sort(projection_fn(prior).squeeze())[0]
             posterior_proj = torch.sort(projection_fn( posterior).squeeze())[0]
-            log.info(f"PRIOR PROJECTION {prior_proj}, shape: {prior_proj.shape}")
             total += torch.mean((prior_proj - posterior_proj) ** 2)
         return total
 
@@ -416,7 +415,6 @@ class KLBaseModel(nn.Module):
                 if len(prior_samples_layerwise) <= i:
                     prior_samples_layerwise.append([])
                     posterior_samples_layerwise.append([])
-                log.info(f"Prior samples shape: {prior_samples[i].shape}")
                 prior_samples_layerwise[i].append(prior_samples[i])
                 posterior_samples_layerwise[i].append(posterior_samples[i])
         for i in range(len(prior_samples_layerwise)):
