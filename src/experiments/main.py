@@ -465,7 +465,7 @@ def parse_args() -> argparse.Namespace:
         help="Run baseline training instead of our model.",
     )
     parser.add_argument(
-        "--epochs", type=int, default=1000, help="Number of training epochs."
+        "--epochs", type=int, default=500, help="Number of training epochs."
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
     parser.add_argument(
@@ -503,7 +503,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--set_lambda", type=float, default=None)
     parser.add_argument("--lambda_scaler", type=float, default=0.1)
     parser.add_argument("--vae_no_warmup", action="store_true", default=False)
-
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
