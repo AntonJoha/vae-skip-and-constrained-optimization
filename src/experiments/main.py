@@ -129,8 +129,8 @@ def evaluate_generalized_wasserstein(model, loader: DataLoader) -> float:
     count = 1
     log.info("START")
     for batch in loader:
-        if random.random() < 0.9:
-            continue  # Skip 90% of the batches to reduce computation
+        if gsw_losses and random.random() < 0.9:
+            continue  # Subsample only after evaluating at least one batch.
         x, y = unpack_batch(batch)
         loss = model.compute_generalized_sliced_wasserstein_distance(x, y)
         log.info(loss)
