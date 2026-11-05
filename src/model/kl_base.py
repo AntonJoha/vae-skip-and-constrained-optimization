@@ -383,8 +383,9 @@ class KLBaseModel(nn.Module):
         for _prior, _posterior in zip(prior_samples, posterior_samples):
             prior = _prior.detach()
             posterior = _posterior.detach()
-            prior_proj = torch.sort(projection_fn(prior), dim=-1)[0]
-            posterior_proj = torch.sort(projection_fn( posterior), dim=-1)[0]
+            prior_proj = torch.sort(projection_fn(prior).squeeze())[0]
+            posterior_proj = torch.sort(projection_fn( posterior).squeeze())[0]
+            log.info(f"PRIOR PROJECTION {prior_proj}, shape: {prior_proj.shape}")
             total += torch.mean((prior_proj - posterior_proj) ** 2)
         return total
 
@@ -399,32 +400,41 @@ class KLBaseModel(nn.Module):
 
         model = torch.nn.Linear(self.config.hidden_dim, 1, bias=False).to(self.device) ## we choose a linear model as g(,\theta)
         optimizer= torch.optim.Adam(model.parameters(), lr=lr)
-        x = _x.to(self.device)
-        y = _y.to(self.device)
+        x = x.to(self.device)
+        y = y.to(self.device)
 
 
         samples = []
         for _ in range(num_projections):
             samples.append(self.get_latent_samples(x, y))
+        
 
-        prior_samples = torch.cat([d for d, _ in samples], dim=0)
-        posterior_samples = torch.cat([d for _, d in samples], dim=0)
+        prior_samples_layerwise = []
+        posterior_samples_layerwise = []
+        for prior_samples, posterior_samples in samples:
+            for i in range(len(prior_samples)):
+                if len(prior_samples_layerwise) <= i:
+                    prior_samples_layerwise.append([])
+                    posterior_samples_layerwise.append([])
+                log.info(f"Prior samples shape: {prior_samples[i].shape}")
+                prior_samples_layerwise[i].append(prior_samples[i])
+                posterior_samples_layerwise[i].append(posterior_samples[i])
+        for i in range(len(prior_samples_layerwise)):
+            prior_samples_layerwise[i] = torch.cat(prior_samples_layerwise[i], dim=0)
+            posterior_samples_layerwise[i] = torch.cat(posterior_samples_layerwise[i], dim=0)
+
 
         for _ in range(num_steps):
             optimizer.zero_grad()
             loss = -self._gsw_distance(
-                projection_fn=model, prior_samples=prior_samples, posterior_samples=posterior_samples
+                projection_fn=model, prior_samples=prior_samples_layerwise, posterior_samples=posterior_samples_layerwise
             )
             loss.backward()
             optimizer.step()
             model.weight.data /= torch.norm(model.weight.data)  # normalize the weight vector
         
-        to_return = torch.Tensor([0.0]).to(self.device)
-        for prior_samples, posterior_samples in samples:
-            to_return += self._gsw_distance(
-                projection_fn=model, prior_samples=prior_samples, posterior_samples=posterior_samples
-            )/len(samples)
-        return to_return
+        return self._gsw_distance(
+                projection_fn=model, prior_samples=prior_samples_layerwise, posterior_samples=posterior_samples_layerwise)
 
     def get_latent_samples(
         self, x: torch.Tensor, y: torch.Tensor
