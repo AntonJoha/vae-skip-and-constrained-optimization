@@ -62,7 +62,8 @@ class Model(KLBaseModel):
 
     def train_step(
         self,
-        x: torch.Tensor,
+        mean: torch.Tensor,
+        variance: torch.Tensor,
         y: torch.Tensor,
         middle_optimizer: torch.optim.Optimizer,
         inner_optimizer,
@@ -70,15 +71,15 @@ class Model(KLBaseModel):
         self.train()
         inner_optimizer.zero_grad()
 
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=False
         )
 
 
         _, prior_kl = self._compute_losses(
             y,
-            mean,
-            logvar,
+            mean_p,
+            logvar_p,
             prior_list=prior_list,
             combined_posterior_list=[t.detach() for t in combined_posterior_list],
         )
@@ -86,13 +87,13 @@ class Model(KLBaseModel):
         inner_optimizer.step()
 
         middle_optimizer.zero_grad()
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=False
         )
         rec, _ = self._compute_losses(
             y,
-            mean,
-            logvar,
+            mean_p,
+            logvar_p,
             prior_list=[t.detach() for t in prior_list],
             combined_posterior_list=combined_posterior_list,
         )
@@ -123,10 +124,10 @@ class Model(KLBaseModel):
 
         return float(loss.detach())
 
-    def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
+    def print_gradients(self, mean: torch.Tensor,variance: torch.Tensor, y: torch.Tensor):
 
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
+        mean, logvar, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=False
         )
         _, prior_kl = self._compute_losses(
             y,
@@ -160,8 +161,8 @@ class Model(KLBaseModel):
             for group_name, norm in groups.items():
                 log.info("    %-20s %.6e", group_name, norm)
 
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
+        mean, logvar, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=False
         )
         rec, _ = self._compute_losses(
             y,
@@ -239,13 +240,4 @@ class Model(KLBaseModel):
         for group_name, similarity in cosine_similarity.items():
             log.info("    %-20s %.6f", group_name, similarity)
 
-        prior_mean, prior_logvar, *_ = self._latent_pass(x, y=None, prior=True)
-        """
-        log.info(
-            "  posterior mean=%.6f logvar=%.6f prior mean=%.6f prior logvar=%.6f",
-            mean[0][0][0].item(),
-            logvar[0][0][0].item(),
-            prior_mean[0][0][0].item(),
-            prior_logvar[0][0][0].item(),
-        )
-        """
+        

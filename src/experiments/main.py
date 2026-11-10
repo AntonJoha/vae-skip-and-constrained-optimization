@@ -24,8 +24,6 @@ from experiments.util import (
 )
 from model import (
     VRNN,
-    Basic,
-    Inner_Reg_Model,
     Lower_Model,
     RangeBound_Model,
     Reg_Model,
@@ -39,9 +37,7 @@ log = logging.getLogger(__name__)
 MODEL_FACTORIES = (
     (lambda runtime: runtime.vae_baseline, VAE_Baseline_Model),
     (lambda runtime: runtime.vrnn, VRNN),
-    (lambda runtime: runtime.basic, Basic),
     (lambda runtime: runtime.upper, Upper_Model),
-    (lambda runtime: runtime.inner_kl, Inner_Reg_Model),
     (lambda runtime: runtime.lower, Lower_Model),
     (lambda runtime: runtime.range_bound, RangeBound_Model),
 )

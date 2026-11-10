@@ -66,18 +66,17 @@ class Model(KLBaseModel):
         inner_optimizer=None,
     ) -> float:
 
-        if optimizer is None:
-            raise ValueError("Optimizer must be provided for train_step.")
+
         self.train()
         optimizer.zero_grad(set_to_none=True)
-        mean, logvar, prior_list, combined_posterior_list = self.latent_pass(
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
 
         rec, _ = self._compute_losses(
             y,
-            mean,
-            logvar,
+            mean_p,
+            logvar_p,
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
@@ -112,14 +111,14 @@ class Model(KLBaseModel):
 
     def print_gradients(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor):
 
-        mean, logvar, prior_list, combined_posterior_list = self.latent_pass(
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
 
         rec, _ = self._compute_losses(
             y,
-            mean,
-            logvar,
+            mean_p,
+            logvar_p,
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
