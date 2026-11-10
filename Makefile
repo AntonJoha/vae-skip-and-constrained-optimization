@@ -5,8 +5,10 @@ mid_horizon = 50
 long_horizon = 100
 
 
-_: tune  upper vae lower vae_no_warmup
+_: test#tune  upper vae lower vae_no_warmup
 
+test:
+	python -m experiments.main --verbose --horizon 10 --grad_diagnostics --scrabbled_y
 
 eval_tune_short="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-092907.pt"
 eval_tune_mid="artifacts_dev/tdlgm/checkpoint_epochbest_20261028-223040.pt"

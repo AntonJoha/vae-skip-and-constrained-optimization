@@ -390,10 +390,10 @@ class WindowedSeriesDataset(Dataset):
     def __len__(self) -> int:
         return max(0, len(self.series) - self.seq_len - self.horizon + 1)
 
-    def __getitem__(self, index: int) -> torch.Tensor:
+    def __getitem__(self, index: int) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         sequence = self.series[index : index + self.seq_len]
         target = self.series[index + self.seq_len : index + self.seq_len + self.horizon]
-        return sequence, target
+        return (sequence, torch.zeros(sequence.shape)), target # returns, [mean, variance (always 0)], target.
 
 
 def load_series(path: Path) -> torch.Tensor:
