@@ -268,16 +268,16 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     gen = evaluate_generalized_wasserstein(model, loader)
     wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
     for batch in loader:
-        x, y = unpack_batch(batch)
+        mean, variance, y = unpack_batch(batch)
 
-        mean, logvar, *_ = model(x)
+        mean_p, logvar, *_ = model(mean, variance)
 
 
-        _, _, prior_list, _ = model._latent_pass(x, y=None, prior=True)
+        _, _, prior_list, _ = model.latent_pass(mean_p, variance, y=None, prior=True)
         prior_latents.append(_split_layers(prior_list))
 
-        post_mean, post_logvar, post_prior_list, post_list = model._latent_pass(
-            x, y, prior=False
+        post_mean, post_logvar, post_prior_list, post_list = model.latent_pass(
+            mean, variance, y, prior=False
         )
         post_means.append(post_mean)
         post_logvars.append(post_logvar)
@@ -299,29 +299,29 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         wasserstein2_similarity_losses.append(1.0 / (1.0 + wasserstein2_distance_score))
         layered_kl_losses.append(model.get_layered_kl(x, y))
 
-        mean_scaled = scaler[0](mean)
+        mean_scaled = scaler[0](mean_p)
         y_scaled = scaler[0](y)
         logvar_scaled = scaler[1](logvar)
-        x_scaled = scaler[0](x)
+        x_scaled = scaler[0](mean)
 
         ys_scaled.append(y_scaled)
         xs_scaled.append(x_scaled)
         means_scaled.append(mean_scaled)
         logvars_scaled.append(logvar_scaled)
 
-        losses.append(float(model.nllLoss(mean, y.squeeze(-1), logvar.exp())))
-        losses_position.append(nll_position(mean, y.squeeze(-1), logvar))
+        losses.append(float(model.nllLoss(mean_p, y.squeeze(-1), logvar.exp())))
+        losses_position.append(nll_position(mean_p, y.squeeze(-1), logvar))
 
-        mse_losses.append(float(mse_loss(mean, y.squeeze(-1)).mean()))
-        mse_losses_position.append(mse_position(mean, y.squeeze(-1)))
+        mse_losses.append(float(mse_loss(mean_p, y.squeeze(-1)).mean()))
+        mse_losses_position.append(mse_position(mean_p, y.squeeze(-1)))
 
         ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
         ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
         fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
         fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
 
-        xs.append(x)
-        means.append(mean)
+        xs.append(mean)
+        means.append(mean_p)
         logvars.append(logvar)
         ys.append(y)
 
