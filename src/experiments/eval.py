@@ -3,16 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import random
 from dataclasses import replace
 from pathlib import Path
 
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-import random
+
 from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
-from experiments.main import unpack_batch, evaluate_generalized_wasserstein
+from experiments.main import evaluate_generalized_wasserstein, unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
 from model import (
     Inner_Reg_Model,

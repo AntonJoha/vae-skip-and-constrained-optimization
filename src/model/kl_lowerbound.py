@@ -41,10 +41,8 @@ class Model(KLBaseModel):
 
         if config.set_lambda is not None:
             self.lambda_ = torch.zeros(config.layers).to(device) + config.set_lambda
-            log.info("Hello")
             for i in range(config.layers):
                 self.lambda_[i] = self.lambda_[i]*config.lambda_scaler**(i)
-            log.info(str(self.lambda_))
 
 
 

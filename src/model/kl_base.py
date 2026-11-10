@@ -52,7 +52,6 @@ class SequenceAttentionEncoder(nn.Module):
         dropout: float = 0.0,
     ):
         super().__init__()
-        log.info(f"onput_dim, {input_dim}, Hidden dim: {hidden_dim}, layers: {layers}, seq_len: {seq_len}, dropout: {dropout}")     
         self.input_proj = nn.Linear(input_dim, hidden_dim)
         self.position_embedding = nn.Parameter(torch.zeros(1, seq_len, hidden_dim))
         self.encoder = nn.TransformerEncoder(
@@ -342,7 +341,7 @@ class KLBaseModel(nn.Module):
 
     def compute_wasserstein_distance_log(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
 
-        prior_samples, posterior_samples = self.get_latent_samples(mean, variance y)
+        prior_samples, posterior_samples = self.get_latent_samples(mean, variance, y[:,0,:])
         wasserstein_loss = 0.0
 
         for _ in range(num_projections):
@@ -357,7 +356,7 @@ class KLBaseModel(nn.Module):
             posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
 
             wass = sum(
-                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
             )/num_projections
             wasserstein_loss += wass
         return wasserstein_loss
@@ -366,11 +365,11 @@ class KLBaseModel(nn.Module):
 
     def compute_wasserstein_distance(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
 
-        prior_samples, posterior_samples = self.get_latent_samples(mean, variance, y)
+        prior_samples, posterior_samples = self.get_latent_samples(mean, variance, y[:,0,:])
         wasserstein_loss = 0.0
 
         for _ in range(num_projections):
-            projection = torch.randn(prior_samples[0].shape[-1], device=x.device)
+            projection = torch.randn(prior_samples[0].shape[-1], device=mean.device)
             projection /= torch.norm(projection)
 
             prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
@@ -380,7 +379,7 @@ class KLBaseModel(nn.Module):
             posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
 
             wass = sum(
-                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
             )/num_projections
             if wass > 100:
                 print("Projection: ", projection)
@@ -397,7 +396,7 @@ class KLBaseModel(nn.Module):
                 posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
 
                 wass = sum(
-                    torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                    torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
                 )/num_projections
                 print("Wasser", wass)
                 exit()
@@ -412,7 +411,7 @@ class KLBaseModel(nn.Module):
         posterior_samples: list[torch.Tensor],
     ) -> torch.Tensor:
         total = torch.Tensor([0.0]).to(self.device)
-        for _prior, _posterior in zip(prior_samples, posterior_samples):
+        for _prior, _posterior in zip(prior_samples, posterior_samples, strict=False):
             prior = _prior.detach()
             posterior = _posterior.detach()
             prior_proj = torch.sort(projection_fn(prior).squeeze())[0]
@@ -439,7 +438,7 @@ class KLBaseModel(nn.Module):
 
         samples = []
         for _ in range(num_projections):
-            samples.append(self.get_latent_samples(mean, variance, y))
+            samples.append(self.get_latent_samples(mean, variance, y[:,0,:]))
         
 
         prior_samples_layerwise = []
@@ -480,7 +479,7 @@ class KLBaseModel(nn.Module):
         mean_var_pair = torch.cat([mean, variance], dim=-1)
         y_pair = torch.cat([y, torch.zeros_like(y)], dim=-1).unsqueeze(1)
 
-
+        
         y_full = torch.cat([ mean_var_pair, y_pair], dim=1)
         posterior = self._encode_state(self.posterior_state, y_full)
 
@@ -490,9 +489,9 @@ class KLBaseModel(nn.Module):
         for layer in self.posterior_layers:
             posterior = layer(posterior)
             posterior_list.append(posterior)
-            mean, logvar = posterior.chunk(2, dim=-1)
-            logvar = self._clamp_logvar(logvar)
-            posterior = self._reparametrize(mean, logvar)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(q_logvar)
+            posterior = self._reparametrize(q_mean, q_logvar)
         if self._should_reverse_posterior():
             posterior_list.reverse()
 
@@ -501,20 +500,20 @@ class KLBaseModel(nn.Module):
         for i, layer in enumerate(self.prior_layers):
             old_state = prior_state
             prior_state = layer(prior_state)
-            mean, logvar = prior_state.chunk(2, dim=-1)
-            logvar = self._clamp_logvar(logvar)
-            prior_list.append(self._reparametrize(mean, logvar))
+            p_mean, p_logvar = prior_state.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(p_logvar)
+            prior_list.append(self._reparametrize(p_mean, p_logvar))
 
             posterior = posterior_list[i]
             q_mean, q_logvar = posterior.chunk(2, dim=-1)
             p_mean, p_logvar = prior_state.chunk(2, dim=-1)
             q_logvar = self._clamp_logvar(q_logvar)
             p_logvar = self._clamp_logvar(p_logvar)
-            mean, logvar = self._combine_gaussians(
+            c_mean, c_logvar = self._combine_gaussians(
                 q_mean, q_logvar, p_mean, p_logvar
             )
             logvar = self._clamp_logvar(logvar)
-            prior_state = self._reparametrize(mean, logvar)
+            prior_state = self._reparametrize(c_mean, c_logvar)
             combined_posterior_list.append(prior_state)
 
             if self.skip_connection:
@@ -642,7 +641,7 @@ class KLBaseModel(nn.Module):
             mean_diffs.append(mean_diff.item())
             logvar_diffs.append(logvar_diff.item())
 
-        return torch.tensor(mean_diffs, device=x.device), torch.tensor(logvar_diffs, device=x.device)
+        return torch.tensor(mean_diffs, device=mean.device), torch.tensor(logvar_diffs, device=mean.device)
 
     def _parameter_groups(self):
         groups = {

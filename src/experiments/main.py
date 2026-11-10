@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import random
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ import torch.nn as nn
 from optuna.exceptions import TrialPruned
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-import random
+
 from data.data import make_dataloaders
 from experiments.util import (
     SeriesConfig,
@@ -128,15 +129,12 @@ def evaluate_generalized_wasserstein(model, loader: DataLoader) -> float:
     model.eval()
     gsw_losses = []
     count = 1
-    log.info("START")
     for batch in loader:
         if gsw_losses and random.random() < 0.9:
             continue  # Subsample only after evaluating at least one batch.
         mean, variance, y = unpack_batch(batch)
-        loss = model.compute_generalized_sliced_wasserstein_distance(mean, y)
-        log.info(loss)
+        loss = model.compute_generalized_sliced_wasserstein_distance(mean, variance, y)
         gsw_losses.append(float(loss.item()))
-        log.info(f"Count {count}")
         count += 1
     model.train()
     return sum(gsw_losses) / max(1, len(gsw_losses))
