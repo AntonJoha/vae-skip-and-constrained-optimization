@@ -73,13 +73,13 @@ class Model(KLBaseModel):
             mean, variance, y, prior=False
         )
 
-
+        
         _, prior_kl = self._compute_losses(
             y,
             mean_p,
             logvar_p,
             prior_list=prior_list,
-            combined_posterior_list=[t.detach() for t in combined_posterior_list],
+            combined_posterior_list=combined_posterior_list,
         )
         prior_kl.backward()
         inner_optimizer.step()
@@ -92,7 +92,7 @@ class Model(KLBaseModel):
             y,
             mean_p,
             logvar_p,
-            prior_list=[t.detach() for t in prior_list],
+            prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
 
@@ -124,15 +124,15 @@ class Model(KLBaseModel):
 
     def print_gradients(self, mean: torch.Tensor,variance: torch.Tensor, y: torch.Tensor):
 
-        mean, logvar, prior_list, combined_posterior_list = self.latent_pass(
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
         _, prior_kl = self._compute_losses(
             y,
-            mean,
-            logvar,
+            mean_p,
+            logvar_p,
             prior_list=prior_list,
-            combined_posterior_list=[t.detach() for t in combined_posterior_list],
+            combined_posterior_list=combined_posterior_list,
         )
 
         grad_info = self.gradient_diagnostics(
@@ -159,14 +159,14 @@ class Model(KLBaseModel):
             for group_name, norm in groups.items():
                 log.info("    %-20s %.6e", group_name, norm)
 
-        mean, logvar, prior_list, combined_posterior_list = self.latent_pass(
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
         rec, _ = self._compute_losses(
             y,
-            mean,
-            logvar,
-            prior_list=[t.detach() for t in prior_list],
+            mean_p,
+            logvar_p,
+            prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
 

@@ -559,7 +559,7 @@ class KLBaseModel(nn.Module):
         prior_list: list[torch.Tensor],
         combined_posterior_list: list[torch.Tensor],
     ) -> torch.Tensor:
-        kl_losses = [torch.Tensor([0.0], device=prior_list[0][0].device) for _ in range(len(prior_list[0]))]
+        kl_losses = [torch.Tensor([0.0]).to(self.device) for _ in range(len(prior_list[0]))]
         for p, q in zip(prior_list, combined_posterior_list, strict=False):
             count = 0
             for prior, posterior in zip(p, q, strict=False):
