@@ -258,11 +258,16 @@ class KLBaseModel(nn.Module):
         
         mean_pred, logvar_pred = [] , []
         prior_list , combined_posterior_list = [], []
-        for i in range(y.shape[1]):
-            mean_p, logvar_p, prior, combined_posterior = self._latent_pass(mean, variance, y[:,i,:], prior=prior)
+        for i in range(self.config.horizon):
+
+
+            if y is not None:
+                mean_p, logvar_p, prior_l, combined_posterior = self._latent_pass(mean, variance, y[:,i,:], prior=prior)
+            else:
+                mean_p, logvar_p, prior_l, combined_posterior = self._latent_pass(mean, variance, y=None, prior=prior)
             mean_pred.append(mean_p)
             logvar_pred.append(logvar_p)
-            prior_list.append(prior)
+            prior_list.append(prior_l)
             combined_posterior_list.append(combined_posterior)
 
             if teacher_forcing:
@@ -271,7 +276,11 @@ class KLBaseModel(nn.Module):
             else:
                 variance_p = torch.exp(logvar_p)
 
-            
+
+            if mean_p.ndim == 2:
+                mean_p = mean_p.unsqueeze(1)
+            if variance_p.ndim == 2:
+                variance_p = variance_p.unsqueeze(1)
             mean = torch.cat([mean[:,1:,:], mean_p], dim=1)
             variance = torch.cat([variance[:,1:,:], variance_p], dim=1)
 
@@ -550,8 +559,9 @@ class KLBaseModel(nn.Module):
         prior_list: list[torch.Tensor],
         combined_posterior_list: list[torch.Tensor],
     ) -> torch.Tensor:
-        kl_losses = []
+        kl_losses = [torch.Tensor([0.0], device=prior_list[0][0].device) for _ in range(len(prior_list[0]))]
         for p, q in zip(prior_list, combined_posterior_list, strict=False):
+            count = 0
             for prior, posterior in zip(p, q, strict=False):
                 p_mean, p_logvar = prior.chunk(2, dim=-1)
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
@@ -561,7 +571,9 @@ class KLBaseModel(nn.Module):
                     + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
                     - 1
                 )
-                kl_losses.append(kl.sum(dim=-1).mean())
+                kl_losses[count] += kl.sum(dim=-1).mean()/len(prior_list)
+                count += 1
+                
         return torch.stack(kl_losses)
 
     def _compute_losses(
@@ -574,7 +586,9 @@ class KLBaseModel(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         pred_mean = pred_mean.squeeze() if pred_mean.ndim > 3 else pred_mean
         pred_logvar = pred_logvar.squeeze() if pred_logvar.ndim > 3 else pred_logvar
-        recon_loss = self.nllLoss(pred_mean, y.squeeze(-1), pred_logvar.exp())
+        y = y.squeeze() if y.ndim > 3 else y
+
+        recon_loss = self.nllLoss(pred_mean, y, pred_logvar.exp())
         kl_loss = 0.0
         if prior_list is not None and combined_posterior_list is not None:
             kl_loss = self._kl_from_stats(prior_list, combined_posterior_list)

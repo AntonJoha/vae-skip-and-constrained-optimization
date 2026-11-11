@@ -82,6 +82,7 @@ class Model(KLBaseModel):
         )
 
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
+
         residual = layered_kl - self._layer_target(layered_kl)
 
         kl_constraint = (
