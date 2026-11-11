@@ -158,6 +158,8 @@ def evaluate_kl(model, loader: DataLoader) -> float:
 
 
 def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam, Adam]:
+    if runtime.inner_kl:
+        raise ValueError("The inner_kl model is no longer supported.")
     for predicate, factory in MODEL_FACTORIES:
         if predicate(runtime):
             model = factory(runtime).to(device)
