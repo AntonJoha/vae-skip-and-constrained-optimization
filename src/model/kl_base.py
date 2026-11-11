@@ -272,7 +272,7 @@ class KLBaseModel(nn.Module):
 
             if teacher_forcing:
                 mean_p = y[:,i,:]
-                variance_p = torch.zeros_like(mean) 
+                variance_p = torch.zeros_like(mean_p)
             else:
                 variance_p = torch.exp(logvar_p)
 
