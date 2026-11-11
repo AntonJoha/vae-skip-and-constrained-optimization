@@ -142,7 +142,7 @@ class Model(KLBaseModel):
             mean_p,
             logvar_p,
             prior_list=prior_list,
-            combined_posterior_list=[t.detach() for t in combined_posterior_list],
+            combined_posterior_list=combined_posterior_list,
         )
 
         grad_info = self.gradient_diagnostics(
@@ -176,7 +176,7 @@ class Model(KLBaseModel):
             y,
             mean_p,
             logvar_p,
-            prior_list=[t.detach() for t in prior_list],
+            prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
 

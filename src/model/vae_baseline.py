@@ -17,7 +17,6 @@ class Model(KLBaseModel):
 
     def __init__(self, config):
         super().__init__(config)
-        log.info("HELLO")
         self.beta = float(self.config.beta)
         self.kl_warmup_epochs = config.kl_warmup_epochs
         log.info( self.kl_warmup_epochs)
@@ -47,7 +46,7 @@ class Model(KLBaseModel):
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)
-        mean_p, logvar_p, prior_list, combined_posterior_list = self._latent_pass(
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
 
@@ -67,7 +66,7 @@ class Model(KLBaseModel):
         return float(loss.detach())
 
     def print_gradients(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor):
-        mean_p, logvar_p, prior_list, combined_posterior_list = self._latent_pass(
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
         rec, kl_loss = self._compute_losses(
