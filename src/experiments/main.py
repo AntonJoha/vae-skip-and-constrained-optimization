@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import random
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ import torch.nn as nn
 from optuna.exceptions import TrialPruned
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-import random
+
 from data.data import make_dataloaders
 from experiments.util import (
     SeriesConfig,
@@ -24,8 +25,6 @@ from experiments.util import (
 )
 from model import (
     VRNN,
-    Basic,
-    Inner_Reg_Model,
     Lower_Model,
     RangeBound_Model,
     Reg_Model,
@@ -39,22 +38,23 @@ log = logging.getLogger(__name__)
 MODEL_FACTORIES = (
     (lambda runtime: runtime.vae_baseline, VAE_Baseline_Model),
     (lambda runtime: runtime.vrnn, VRNN),
-    (lambda runtime: runtime.basic, Basic),
     (lambda runtime: runtime.upper, Upper_Model),
-    (lambda runtime: runtime.inner_kl, Inner_Reg_Model),
     (lambda runtime: runtime.lower, Lower_Model),
     (lambda runtime: runtime.range_bound, RangeBound_Model),
 )
 
 
-def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     x, y = batch
-    if x.ndim == 2:
-        x = x.unsqueeze(-1)
+    mean, variance = x[0], x[1]
+    if mean.ndim == 2:
+        mean = mean.unsqueeze(-1)
+    if variance.ndim == 2:
+        variance = variance.unsqueeze(-1)
     if y.ndim == 2:
         y = y.unsqueeze(-1)
 
-    return x.to(device), y.to(device)
+    return mean.to(device), variance.to(device), y.to(device)
 
 
 def _to_python(value):
@@ -68,8 +68,8 @@ def evaluate(model, loader: DataLoader) -> float:
     model.eval()
     losses = []
     for batch in loader:
-        x, y = unpack_batch(batch)
-        t_recon_loss, _ = model.compute_losses(x, y)
+        mean, variance, y = unpack_batch(batch)
+        t_recon_loss, _ = model.compute_losses(mean, variance, y)
         losses.append(t_recon_loss)
     model.train()
     return sum(losses) / max(1, len(losses))
@@ -80,9 +80,10 @@ def evaluate_posterior(model, loader: DataLoader) -> float:
     model.eval()
     losses = []
     for batch in loader:
-        x, y = unpack_batch(batch)
+        mean, variance,  y = unpack_batch(batch)
         t_recon_loss_q, _ = model.compute_losses(
-            x,
+            mean,
+            variance,
             y,
             prior=False,
         )
@@ -96,10 +97,11 @@ def evaluate_scrabbled(model, loader: DataLoader) -> float:
     model.eval()
     losses = []
     for batch in loader:
-        x, y = unpack_batch(batch)
+        mean, varianece, y = unpack_batch(batch)
         y_random = y[torch.randperm(y.size(0))]  # Scramble the target values
         t_recon_loss_q, _ = model.compute_scrambled_losses(
-            x,
+            mean,
+            varianece,
             y,
             y_random,
             prior=False,
@@ -116,8 +118,8 @@ def evaluate_wasserstein(model, loader: DataLoader) -> float:
     for batch in loader:
         if random.random() < 0.9:
             continue  # Skip 90% of the batches to reduce computation
-        x, y = unpack_batch(batch)
-        t_wasserstein_loss = model.compute_wasserstein_distance(x, y)
+        mean, variance, y = unpack_batch(batch)
+        t_wasserstein_loss = model.compute_wasserstein_distance(mean, variance, y)
         wasserstein_losses.append(t_wasserstein_loss)
     model.train()
     return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
@@ -127,15 +129,12 @@ def evaluate_generalized_wasserstein(model, loader: DataLoader) -> float:
     model.eval()
     gsw_losses = []
     count = 1
-    log.info("START")
     for batch in loader:
         if gsw_losses and random.random() < 0.9:
             continue  # Subsample only after evaluating at least one batch.
-        x, y = unpack_batch(batch)
-        loss = model.compute_generalized_sliced_wasserstein_distance(x, y)
-        log.info(loss)
+        mean, variance, y = unpack_batch(batch)
+        loss = model.compute_generalized_sliced_wasserstein_distance(mean, variance, y)
         gsw_losses.append(float(loss.item()))
-        log.info(f"Count {count}")
         count += 1
     model.train()
     return sum(gsw_losses) / max(1, len(gsw_losses))
@@ -147,8 +146,8 @@ def evaluate_kl(model, loader: DataLoader) -> float:
     kl_losses = None
     count = 0
     for batch in loader:
-        x, y = unpack_batch(batch)
-        temp = model.get_layered_kl(x, y)
+        mean, variance, y = unpack_batch(batch)
+        temp = model.get_layered_kl(mean, variance, y)
         if kl_losses is None:
             kl_losses = temp
         else:
@@ -158,7 +157,9 @@ def evaluate_kl(model, loader: DataLoader) -> float:
     return kl_losses / max(1, count)
 
 
-def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
+def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam, Adam]:
+    if runtime.inner_kl:
+        raise ValueError("The inner_kl model is no longer supported.")
     for predicate, factory in MODEL_FACTORIES:
         if predicate(runtime):
             model = factory(runtime).to(device)
@@ -189,8 +190,8 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam]:
 
 def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
     for batch in loader:
-        x, y = unpack_batch(batch)
-        runtime.input_dim = x.shape[-1]
+        mean, _, y = unpack_batch(batch)
+        runtime.input_dim = mean.shape[-1]*2
         runtime.output_dim = y.shape[-1]
         break
 
@@ -242,9 +243,9 @@ def train_model(
         model.set_epoch(epoch)
 
         for batch in train_loader:
-            x, y = unpack_batch(batch)
+            mean, variance, y = unpack_batch(batch)
             epoch_losses.append(
-                model.train_step(x, y, middle_optimizer, inner_optimizer)
+                model.train_step(mean, variance, y, middle_optimizer, inner_optimizer)
             )
 
         model.outer_train_step(train_loader)
@@ -288,19 +289,20 @@ def train_model(
                     )
             if runtime.grad_diagnostics:
                 count = 10
-                x_t, y_t = None, None
+                mean_t, variance_t,  y_t = None, None, None
                 for batch in train_loader:
-                    x, y = unpack_batch(batch)
-                    if x_t is None:
-                        x_t, y_t = x, y
+                    mean, variance, y = unpack_batch(batch)
+                    if mean_t is None:
+                        mean_t, variance_t, y_t = mean, variance, y
                     else:
-                        x_t = torch.cat((x_t, x), dim=0)
+                        mean_t = torch.cat((mean_t, mean), dim=0)
+                        variance_t = torch.cat((variance_t, variance), dim=0)
                         y_t = torch.cat((y_t, y), dim=0)
                     count -= 1
                     if count <= 0:
                         break
 
-                model.print_gradients(x_t, y_t)
+                model.print_gradients(mean_t, variance_t, y_t)
 
             if runtime.scrabbled_y:
                 scrabbled_val_loss = evaluate_scrabbled(model, val_loader)

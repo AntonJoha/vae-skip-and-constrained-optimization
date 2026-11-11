@@ -117,12 +117,11 @@ class KLBaseModel(nn.Module):
         self.config = config
         self.basic = getattr(config, "vae_baseline", False)
         self.epoch = 0
-        
         self.posterior_state = SequenceAttentionEncoder(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
             layers=2,
-            seq_len=config.seq_len + config.horizon,
+            seq_len=config.seq_len + 1,
             dropout=self.state_dropout,
         )
         self.prior_state = SequenceAttentionEncoder(
@@ -133,7 +132,7 @@ class KLBaseModel(nn.Module):
             dropout=self.state_dropout,
         )
         self.to_output = nn.Linear(
-            config.hidden_dim, 2 * config.output_dim * config.horizon
+            config.hidden_dim, 2 * config.output_dim
         )
         self.posterior_layers = self.make_layers(
             config.hidden_dim, config.hidden_dim, config.layers
@@ -185,7 +184,7 @@ class KLBaseModel(nn.Module):
         self.epoch = epoch
 
     def _to_output_shape(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.view(x.size(0), self.config.horizon, self.config.output_dim)
+        x = x.view(x.size(0), 1, self.config.output_dim)
         return x.squeeze(-1) if self.config.output_dim == 1 else x
 
     def _reparametrize(self, mean: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
@@ -253,26 +252,67 @@ class KLBaseModel(nn.Module):
     def _should_reverse_posterior(self) -> bool:
         return self.reverse_posterior_list and getattr(self.config, "reverse", False)
 
+
+    
+    def latent_pass(self, mean, variance, y, prior=False, teacher_forcing=False):
+        
+        mean_pred, logvar_pred = [] , []
+        prior_list , combined_posterior_list = [], []
+        for i in range(self.config.horizon):
+
+
+            if y is not None:
+                mean_p, logvar_p, prior_l, combined_posterior = self._latent_pass(mean, variance, y[:,i,:], prior=prior)
+            else:
+                mean_p, logvar_p, prior_l, combined_posterior = self._latent_pass(mean, variance, y=None, prior=prior)
+            mean_pred.append(mean_p)
+            logvar_pred.append(logvar_p)
+            prior_list.append(prior_l)
+            combined_posterior_list.append(combined_posterior)
+
+            if teacher_forcing:
+                mean_p = y[:,i,:]
+                variance_p = torch.zeros_like(mean_p)
+            else:
+                variance_p = torch.exp(logvar_p)
+
+
+            if mean_p.ndim == 2:
+                mean_p = mean_p.unsqueeze(1)
+            if variance_p.ndim == 2:
+                variance_p = variance_p.unsqueeze(1)
+            mean = torch.cat([mean[:,1:,:], mean_p], dim=1)
+            variance = torch.cat([variance[:,1:,:], variance_p], dim=1)
+
+
+        return torch.stack(mean_pred, dim=1), torch.stack(logvar_pred, dim=1), prior_list, combined_posterior_list
+
+
+
     def _latent_pass(
-        self, x: torch.Tensor, y: torch.Tensor | None = None, prior: bool = True
+            self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor | None = None, prior: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor], list[torch.Tensor]]:
         posterior_list: list[torch.Tensor] = []
         combined_posterior_list: list[torch.Tensor] = []
 
         if y is not None:
-            y_full = torch.cat([x, y], dim=1)
+            
+            mean_var_pair = torch.cat([mean, variance], dim=-1)
+            y_pair = torch.cat([y, torch.zeros_like(y)], dim=-1).unsqueeze(1)
+
+            y_full = torch.cat([ mean_var_pair, y_pair], dim=1)
             posterior = self._encode_state(self.posterior_state, y_full)
             for layer in self.posterior_layers:
                 posterior = layer(posterior)
-                mean, logvar = posterior.chunk(2, dim=-1)
+                q_mean, logvar = posterior.chunk(2, dim=-1)
                 logvar = self._clamp_logvar(logvar)
-                posterior = torch.cat([mean, logvar], dim=-1)
+                posterior = torch.cat([q_mean, logvar], dim=-1)
                 posterior_list.append(posterior)
-                posterior = self._reparametrize(mean, logvar)
+                posterior = self._reparametrize(q_mean, logvar)
             if self._should_reverse_posterior():
                 posterior_list.reverse()
 
-        prior_state = self._encode_state(self.prior_state, x)
+        prior_state = self._encode_state(self.prior_state, torch.cat([mean, variance], dim=-1))
         prior_list: list[torch.Tensor] = []
         for i, layer in enumerate(self.prior_layers):
             old_state = prior_state
@@ -280,41 +320,41 @@ class KLBaseModel(nn.Module):
             prior_list.append(prior_state)
 
             if prior:
-                mean, logvar = prior_state.chunk(2, dim=-1)
+                p_mean, logvar = prior_state.chunk(2, dim=-1)
                 logvar = self._clamp_logvar(logvar)
-                prior_state = self._reparametrize(mean, logvar)
+                prior_state = self._reparametrize(p_mean, logvar)
             else:
                 posterior = posterior_list[i]
                 q_mean, q_logvar = posterior.chunk(2, dim=-1)
                 p_mean, p_logvar = prior_state.chunk(2, dim=-1)
                 q_logvar = self._clamp_logvar(q_logvar)
                 p_logvar = self._clamp_logvar(p_logvar)
-                mean, logvar = self._combine_gaussians(
+                c_mean, logvar = self._combine_gaussians(
                     q_mean, q_logvar, p_mean, p_logvar
                 )
                 logvar = self._clamp_logvar(logvar)
-                combined_posterior_list.append(torch.cat([mean, logvar], dim=-1))
-                prior_state = self._reparametrize(mean, logvar)
+                combined_posterior_list.append(torch.cat([c_mean, logvar], dim=-1))
+                prior_state = self._reparametrize(c_mean, logvar)
 
             if self.skip_connection:
                 prior_state = prior_state + self.skip_weights[i] * old_state
 
         output = self.to_output(prior_state)
-        mean, logvar = output.chunk(2, dim=-1)
+        pred_mean, logvar = output.chunk(2, dim=-1)
         logvar = self._clamp_logvar(logvar)
-        pred_mean = self._to_output_shape(mean)
+        pred_mean = self._to_output_shape(pred_mean)
         pred_logvar = self._to_output_shape(logvar)
         return pred_mean, pred_logvar, prior_list, combined_posterior_list
 
 
 
-    def compute_wasserstein_distance_log(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
+    def compute_wasserstein_distance_log(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
 
-        prior_samples, posterior_samples = self.get_latent_samples(x, y)
+        prior_samples, posterior_samples = self.get_latent_samples(mean, variance, y[:,0,:])
         wasserstein_loss = 0.0
 
         for _ in range(num_projections):
-            projection = torch.randn(prior_samples[0].shape[-1], device=x.device)
+            projection = torch.randn(prior_samples[0].shape[-1], device=mean.device)
             projection /= torch.norm(projection)
 
             prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
@@ -325,20 +365,20 @@ class KLBaseModel(nn.Module):
             posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
 
             wass = sum(
-                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
             )/num_projections
             wasserstein_loss += wass
         return wasserstein_loss
 
 
 
-    def compute_wasserstein_distance(self, x: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
+    def compute_wasserstein_distance(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor, num_projections: int = 100) -> float:
 
-        prior_samples, posterior_samples = self.get_latent_samples(x, y)
+        prior_samples, posterior_samples = self.get_latent_samples(mean, variance, y[:,0,:])
         wasserstein_loss = 0.0
 
         for _ in range(num_projections):
-            projection = torch.randn(prior_samples[0].shape[-1], device=x.device)
+            projection = torch.randn(prior_samples[0].shape[-1], device=mean.device)
             projection /= torch.norm(projection)
 
             prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
@@ -348,7 +388,7 @@ class KLBaseModel(nn.Module):
             posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
 
             wass = sum(
-                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
             )/num_projections
             if wass > 100:
                 print("Projection: ", projection)
@@ -365,7 +405,7 @@ class KLBaseModel(nn.Module):
                 posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
 
                 wass = sum(
-                    torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted)
+                    torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
                 )/num_projections
                 print("Wasser", wass)
                 exit()
@@ -380,7 +420,7 @@ class KLBaseModel(nn.Module):
         posterior_samples: list[torch.Tensor],
     ) -> torch.Tensor:
         total = torch.Tensor([0.0]).to(self.device)
-        for _prior, _posterior in zip(prior_samples, posterior_samples):
+        for _prior, _posterior in zip(prior_samples, posterior_samples, strict=False):
             prior = _prior.detach()
             posterior = _posterior.detach()
             prior_proj = torch.sort(projection_fn(prior).squeeze())[0]
@@ -390,7 +430,8 @@ class KLBaseModel(nn.Module):
 
     def compute_generalized_sliced_wasserstein_distance(
         self,
-        x: torch.Tensor,
+        mean: torch.Tensor,
+        variance: torch.Tensor,
         y: torch.Tensor,
         num_projections: int = 100,
         num_steps: int = 50,
@@ -399,13 +440,14 @@ class KLBaseModel(nn.Module):
 
         model = torch.nn.Linear(self.config.hidden_dim, 1, bias=False).to(self.device) ## we choose a linear model as g(,\theta)
         optimizer= torch.optim.Adam(model.parameters(), lr=lr)
-        x = x.to(self.device)
+        mean = mean.to(self.device)
+        variance = variance.to(self.device)
         y = y.to(self.device)
 
 
         samples = []
         for _ in range(num_projections):
-            samples.append(self.get_latent_samples(x, y))
+            samples.append(self.get_latent_samples(mean, variance, y[:,0,:]))
         
 
         prior_samples_layerwise = []
@@ -435,14 +477,19 @@ class KLBaseModel(nn.Module):
                 projection_fn=model, prior_samples=prior_samples_layerwise, posterior_samples=posterior_samples_layerwise)
 
     def get_latent_samples(
-        self, x: torch.Tensor, y: torch.Tensor
+            self, mean: torch.Tensor, variance: torch.Tensor,  y: torch.Tensor
     ):
+        
         old = self.logvar_clamp
         self.logvar_clamp = (-10,2)
         posterior_list: list[torch.Tensor] = []
         combined_posterior_list: list[torch.Tensor] = []
 
-        y_full = torch.cat([x, y], dim=1)
+        mean_var_pair = torch.cat([mean, variance], dim=-1)
+        y_pair = torch.cat([y, torch.zeros_like(y)], dim=-1).unsqueeze(1)
+
+        
+        y_full = torch.cat([ mean_var_pair, y_pair], dim=1)
         posterior = self._encode_state(self.posterior_state, y_full)
 
         if self.posterior_layers is None or len(self.posterior_layers) == 0:
@@ -451,31 +498,31 @@ class KLBaseModel(nn.Module):
         for layer in self.posterior_layers:
             posterior = layer(posterior)
             posterior_list.append(posterior)
-            mean, logvar = posterior.chunk(2, dim=-1)
-            logvar = self._clamp_logvar(logvar)
-            posterior = self._reparametrize(mean, logvar)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(q_logvar)
+            posterior = self._reparametrize(q_mean, q_logvar)
         if self._should_reverse_posterior():
             posterior_list.reverse()
 
-        prior_state = self._encode_state(self.prior_state, x)
+        prior_state = self._encode_state(self.prior_state, torch.cat([mean, variance], dim=-1))
         prior_list: list[torch.Tensor] = []
         for i, layer in enumerate(self.prior_layers):
             old_state = prior_state
             prior_state = layer(prior_state)
-            mean, logvar = prior_state.chunk(2, dim=-1)
-            logvar = self._clamp_logvar(logvar)
-            prior_list.append(self._reparametrize(mean, logvar))
+            p_mean, p_logvar = prior_state.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(p_logvar)
+            prior_list.append(self._reparametrize(p_mean, p_logvar))
 
             posterior = posterior_list[i]
             q_mean, q_logvar = posterior.chunk(2, dim=-1)
             p_mean, p_logvar = prior_state.chunk(2, dim=-1)
             q_logvar = self._clamp_logvar(q_logvar)
             p_logvar = self._clamp_logvar(p_logvar)
-            mean, logvar = self._combine_gaussians(
+            c_mean, c_logvar = self._combine_gaussians(
                 q_mean, q_logvar, p_mean, p_logvar
             )
             logvar = self._clamp_logvar(logvar)
-            prior_state = self._reparametrize(mean, logvar)
+            prior_state = self._reparametrize(c_mean, c_logvar)
             combined_posterior_list.append(prior_state)
 
             if self.skip_connection:
@@ -486,26 +533,25 @@ class KLBaseModel(nn.Module):
 
 
 
-
-
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        mean, logvar, *_ = self._latent_pass(x, y=None, prior=True)
+    def forward(self, mean: torch.Tensor, variance: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        mean, logvar, *_ = self.latent_pass(mean, variance, y=None, prior=True)
         return mean, logvar
 
     def _kl_from_stats(
         self, prior_list: list[torch.Tensor], posterior_list: list[torch.Tensor]
     ) -> torch.Tensor:
         kl_loss = 0.0
-        for prior, posterior in zip(prior_list, posterior_list, strict=False):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-            kl = 0.5 * (
-                p_logvar
-                - q_logvar
-                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
-                - 1
-            )
-            kl_loss += kl.sum(dim=-1).mean()
+        for p, q in zip(prior_list, posterior_list, strict=False):
+            for prior, posterior in zip(p, q, strict=False):
+                p_mean, p_logvar = prior.chunk(2, dim=-1)
+                q_mean, q_logvar = posterior.chunk(2, dim=-1)
+                kl = 0.5 * (
+                    p_logvar
+                    - q_logvar
+                    + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
+                    - 1
+                )
+                kl_loss += kl.sum(dim=-1).mean()
         return kl_loss
 
     def _layered_kl(
@@ -513,17 +559,21 @@ class KLBaseModel(nn.Module):
         prior_list: list[torch.Tensor],
         combined_posterior_list: list[torch.Tensor],
     ) -> torch.Tensor:
-        kl_losses = []
-        for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
-            p_mean, p_logvar = prior.chunk(2, dim=-1)
-            q_mean, q_logvar = posterior.chunk(2, dim=-1)
-            kl = 0.5 * (
-                p_logvar
-                - q_logvar
-                + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
-                - 1
-            )
-            kl_losses.append(kl.sum(dim=-1).mean())
+        kl_losses = [torch.Tensor([0.0], device=prior_list[0][0].device) for _ in range(len(prior_list[0]))]
+        for p, q in zip(prior_list, combined_posterior_list, strict=False):
+            count = 0
+            for prior, posterior in zip(p, q, strict=False):
+                p_mean, p_logvar = prior.chunk(2, dim=-1)
+                q_mean, q_logvar = posterior.chunk(2, dim=-1)
+                kl = 0.5 * (
+                    p_logvar
+                    - q_logvar
+                    + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
+                    - 1
+                )
+                kl_losses[count] += kl.sum(dim=-1).mean()/len(prior_list)
+                count += 1
+                
         return torch.stack(kl_losses)
 
     def _compute_losses(
@@ -534,7 +584,11 @@ class KLBaseModel(nn.Module):
         prior_list: list[torch.Tensor] | None = None,
         combined_posterior_list: list[torch.Tensor] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        recon_loss = self.nllLoss(pred_mean, y.squeeze(-1), pred_logvar.exp())
+        pred_mean = pred_mean.squeeze() if pred_mean.ndim > 3 else pred_mean
+        pred_logvar = pred_logvar.squeeze() if pred_logvar.ndim > 3 else pred_logvar
+        y = y.squeeze() if y.ndim > 3 else y
+
+        recon_loss = self.nllLoss(pred_mean, y, pred_logvar.exp())
         kl_loss = 0.0
         if prior_list is not None and combined_posterior_list is not None:
             kl_loss = self._kl_from_stats(prior_list, combined_posterior_list)
@@ -543,13 +597,14 @@ class KLBaseModel(nn.Module):
     @torch.no_grad()
     def compute_scrambled_losses(
         self,
-        x: torch.Tensor,
+        mean: torch.Tensor,
+        variance: torch.Tensor,
         y: torch.Tensor,
         y_random: torch.Tensor,
         prior: bool = False,
     ) -> tuple[float, float]:
-        pred_mean, pred_logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y_random, prior=prior
+        pred_mean, pred_logvar, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y_random, prior=prior
         )
         rec, kl = self._compute_losses(
             y,
@@ -562,10 +617,10 @@ class KLBaseModel(nn.Module):
 
     @torch.no_grad()
     def compute_losses(
-        self, x: torch.Tensor, y: torch.Tensor, prior: bool = True
+            self, mean: torch.Tensor, variance:  torch.Tensor, y: torch.Tensor, prior: bool = True
     ) -> tuple[float, float]:
-        pred_mean, pred_logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=prior
+        pred_mean, pred_logvar, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=prior
         )
         rec, kl = self._compute_losses(
             y,
@@ -577,15 +632,14 @@ class KLBaseModel(nn.Module):
         return float(rec), float(kl)
 
     @torch.no_grad()
-    def get_layered_kl(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+    def get_layered_kl(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        _, _, prior_list, combined_posterior_list = self.latent_pass(mean, variance, y, prior=False)
         return self._layered_kl(prior_list, combined_posterior_list).detach()
 
     @torch.no_grad()
     def get_mean_logvar_diff(
-        self, x: torch.Tensor, y: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        _, _, prior_list, combined_posterior_list = self._latent_pass(x, y, prior=False)
+            self, mean: torch.Tensor,variance: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        _, _, prior_list, combined_posterior_list = self.latent_pass(mean, variance, y, prior=False)
         mean_diffs = []
         logvar_diffs = []
         for prior, posterior in zip(prior_list, combined_posterior_list, strict=False):
@@ -600,9 +654,8 @@ class KLBaseModel(nn.Module):
             )
             mean_diffs.append(mean_diff.item())
             logvar_diffs.append(logvar_diff.item())
-        return torch.tensor(mean_diffs, device=x.device), torch.tensor(
-            logvar_diffs, device=x.device
-        )
+
+        return torch.tensor(mean_diffs, device=mean.device), torch.tensor(logvar_diffs, device=mean.device)
 
     def _parameter_groups(self):
         groups = {

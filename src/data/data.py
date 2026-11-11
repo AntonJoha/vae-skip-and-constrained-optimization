@@ -168,6 +168,7 @@ def convert_tsf_to_dataframe(
             contain_equal_length,
         )
 
+        log.info(f"Count {count}")
 
 class StandardizedPedDataset(Dataset):
     def __init__(self, series, context_length, horizon, mean, std):
@@ -191,7 +192,7 @@ class StandardizedPedDataset(Dataset):
             - self.mean
         ) / self.std
 
-        return x, y
+        return (x, torch.zeros_like(x)), y
 
 
 # Backward-compatible alias for older imports.
@@ -222,7 +223,7 @@ class TimeSeriesDataset(Dataset):
             - self.mean
         ) / self.std
 
-        return x, y
+        return (x, torch.zeros_like(x)), y
 
 
 def _split_train_val_test(
@@ -390,10 +391,10 @@ class WindowedSeriesDataset(Dataset):
     def __len__(self) -> int:
         return max(0, len(self.series) - self.seq_len - self.horizon + 1)
 
-    def __getitem__(self, index: int) -> torch.Tensor:
+    def __getitem__(self, index: int) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         sequence = self.series[index : index + self.seq_len]
         target = self.series[index + self.seq_len : index + self.seq_len + self.horizon]
-        return sequence, target
+        return (sequence, torch.zeros_like(sequence)), target # returns, [mean, variance (always 0)], target.
 
 
 def load_series(path: Path) -> torch.Tensor:

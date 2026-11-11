@@ -17,7 +17,6 @@ class Model(KLBaseModel):
 
     def __init__(self, config):
         super().__init__(config)
-        log.info("HELLO")
         self.beta = float(self.config.beta)
         self.kl_warmup_epochs = config.kl_warmup_epochs
         log.info( self.kl_warmup_epochs)
@@ -39,21 +38,22 @@ class Model(KLBaseModel):
 
     def train_step(
         self,
-        x: torch.Tensor,
+        mean: torch.Tensor,
+        variance: torch.Tensor,
         y: torch.Tensor,
         optimizer: torch.optim.Optimizer,
         _inner_optimier,
     ) -> float:
         self.train()
         optimizer.zero_grad(set_to_none=True)
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=False
         )
 
         rec, kl_loss = self._compute_losses(
             y,
-            mean,
-            logvar,
+            mean_p,
+            logvar_p,
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
@@ -65,14 +65,14 @@ class Model(KLBaseModel):
 
         return float(loss.detach())
 
-    def print_gradients(self, x: torch.Tensor, y: torch.Tensor):
-        mean, logvar, prior_list, combined_posterior_list = self._latent_pass(
-            x, y, prior=False
+    def print_gradients(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor):
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=False
         )
         rec, kl_loss = self._compute_losses(
             y,
-            mean,
-            logvar,
+            mean_p,
+            logvar_p,
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
