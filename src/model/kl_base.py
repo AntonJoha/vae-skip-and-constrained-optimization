@@ -26,6 +26,7 @@ class SequenceRNNEncoder(nn.Module):
         hidden_dim: int,
         layers: int,
         seq_len: int,  # unused, kept for compatibility
+        dropout=0,
     ):
         super().__init__()
         self.rnn = nn.LSTM(
@@ -104,8 +105,8 @@ def _make_mlp(
 
 
 class KLBaseModel(nn.Module):
-    state_dropout = 0.0
-    layer_dropout = 0.0
+    state_dropout = 0.2
+    layer_dropout = 0.2
     logvar_clamp: tuple[float, float] | None = None
     combine_gaussians_mode = "product"
     posterior_reduce = "last"
@@ -117,14 +118,14 @@ class KLBaseModel(nn.Module):
         self.config = config
         self.basic = getattr(config, "vae_baseline", False)
         self.epoch = 0
-        self.posterior_state = SequenceAttentionEncoder(
+        self.posterior_state = SequenceRNNEncoder(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
             layers=2,
             seq_len=config.seq_len + 1,
             dropout=self.state_dropout,
         )
-        self.prior_state = SequenceAttentionEncoder(
+        self.prior_state = SequenceRNNEncoder(
             input_dim=config.input_dim,
             hidden_dim=config.hidden_dim,
             layers=2,
