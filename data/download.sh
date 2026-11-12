@@ -1,5 +1,6 @@
 !#/usr/bin/env bash
 
+wget https://raw.githubusercontent.com/zhouhaoyi/ETDataset/refs/heads/main/ETT-small/ETTh1.csv
 
 wget https://zenodo.org/records/4656117/files/nn5_daily_dataset_without_missing_values.zip
 unzip nn5_daily_dataset_without_missing_values.zip

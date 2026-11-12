@@ -285,6 +285,8 @@ def get_csv_dataset(
         df.drop(["date"], inplace=True, axis=1)
     if path.name == "toy_dataset.csv":
         df.drop(["time"], inplace=True, axis=1)
+    if path.name == "ETTh1.csv":
+        df.drop(["date"], inplace=True, axis=1)
     # Chronological split: train, then validation, then test. The scaler is
     # fit on the training rows only so no statistics leak from the future.
     n = len(df)
@@ -730,7 +732,7 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
-
+        "data/ETTh1.csv",
         "data/AirQualityUCI.csv",
         "data/nn5_daily_dataset_without_missing_values.tsf",
         "data/AirQualityUCI.csv",
