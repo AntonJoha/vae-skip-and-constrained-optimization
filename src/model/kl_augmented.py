@@ -45,6 +45,7 @@ class Model(KLBaseModel):
     def _constraint_multiplier(self, residual: torch.Tensor) -> torch.Tensor:
         multiplier = self.lambda_.to(residual.device)
         if self.config.set_lambda is not None:
+            print("HERE")
             multiplier = multiplier.abs() * residual.detach().sign()
         return multiplier
 
@@ -93,7 +94,7 @@ class Model(KLBaseModel):
         loss.backward()
         optimizer.step()
 
-        dual_lr = optimizer.param_groups[0]["lr"] / 100
+        dual_lr = optimizer.param_groups[0]["lr"] / 10
         self.lambda_lr = dual_lr
         self.rho_lr = dual_lr
         detached_residual = residual.detach()
