@@ -265,7 +265,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     prior_latents, posterior_latents = [], []
     layered_kl_losses = []
 
-    #gen = evaluate_generalized_wasserstein(model, loader)
+    gen = 0#= evaluate_generalized_wasserstein(model, loader)
     wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
     for batch in loader:
         mean, variance, y = unpack_batch(batch)
@@ -289,13 +289,19 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         logvar = logvar.squeeze()
         y = y.squeeze()
         
+        if post_mean.ndim == 2:
+            post_mean = post_mean.unsqueeze(0)
+            post_logvar = post_logvar.unsqueeze(0)
+            mean_p = mean_p.unsqueeze(0)
+            logvar = logvar.unsqueeze(0)
+            y = y.unsqueeze(0)
 
         post_means.append(post_mean)
         post_logvars.append(post_logvar)
         post_losses.append(
-            float(model.nllLoss(post_mean.squeeze(), y.squeeze(), post_logvar.exp().squeeze()))
+            float(model.nllLoss(post_mean, y, post_logvar.exp()))
         )
-        post_mse_losses.append(float(mse_loss(post_mean.squeeze(), y.squeeze()).mean()))
+        post_mse_losses.append(float(mse_loss(post_mean, y).mean()))
         posterior_latents.append(
             {
                 "prior": _split_layers(post_prior_list),
@@ -313,11 +319,11 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         means_scaled.append(mean_scaled)
         logvars_scaled.append(logvar_scaled)
 
-        losses.append(float(model.nllLoss(mean_p.squeeze(), y.squeeze(), logvar.exp().squeeze())))
-        losses_position.append(nll_position(mean_p.squeeze(), y.squeeze().squeeze(), logvar.squeeze()))
+        losses.append(float(model.nllLoss(mean_p, y, logvar.exp())))
+        losses_position.append(nll_position(mean_p, y, logvar))
 
-        mse_losses.append(float(mse_loss(mean_p.squeeze(), y.squeeze()).mean()))
-        mse_losses_position.append(mse_position(mean_p.squeeze(), y.squeeze()))
+        mse_losses.append(float(mse_loss(mean_p, y).mean()))
+        mse_losses_position.append(mse_position(mean_p, y))
 
         ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
         ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
@@ -329,7 +335,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         logvars.append(logvar)
         ys.append(y)
 
-    scrambled_loss = evaluate_scrambled(model, loader)
+    scrambled_loss = 0 #= evaluate_scrambled(model, loader)
     layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
     try:
         layer_target = model._layer_target(layered_kl)
@@ -417,7 +423,7 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 def benchmark_model(args, model_path: Path) -> None:
 
-    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 20)
+    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 100)
     runtime.reduced_dataset = 1
 
     print(runtime)
