@@ -2,7 +2,7 @@ import json
 import logging
 import math
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import torch
@@ -163,11 +163,14 @@ def should_stop_training(initial_loss: float, current_loss: float) -> str | None
 
 
 def load_checkpoint(
-    checkpoint_path: Path,
+    checkpoint_path: Path, custom_horizon=None
 ) -> tuple[SeriesConfig, SeriesConfig, dict[str, torch.Tensor], str | None]:
     checkpoint = torch.load(checkpoint_path, map_location=device)
     runtime = SeriesConfig(**checkpoint["config"])
     model_config = SeriesConfig(**checkpoint["model_config"])
+    if custom_horizon is not None:
+        model_config= replace(model_config, horizon=custom_horizon)
+        runtime = replace(runtime, horizon=custom_horizon)
     model_state = checkpoint["model_state_dict"]
     model_class = checkpoint.get("model_class")
     return runtime, model_config, model_state, model_class

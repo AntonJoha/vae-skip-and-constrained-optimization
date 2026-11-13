@@ -265,13 +265,12 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     prior_latents, posterior_latents = [], []
     layered_kl_losses = []
 
-    gen = evaluate_generalized_wasserstein(model, loader)
+    #gen = evaluate_generalized_wasserstein(model, loader)
     wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
     for batch in loader:
         mean, variance, y = unpack_batch(batch)
 
         mean_p, logvar, *_ = model(mean, variance)
-
 
         _, _, prior_list, _ = model.latent_pass(mean, variance, y=None, prior=True)
         prior_latents.append(_split_layers(prior_list))
@@ -279,6 +278,18 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         post_mean, post_logvar, post_prior_list, post_list = model.latent_pass(
             mean, variance, y, prior=False
         )
+
+
+        layered_kl_losses.append(model.get_layered_kl(mean, variance, y))
+
+        # get the right dimentions to everything
+        post_mean = post_mean.squeeze()
+        post_logvar = post_logvar.squeeze()
+        mean_p = mean_p.squeeze()
+        logvar = logvar.squeeze()
+        y = y.squeeze()
+        
+
         post_means.append(post_mean)
         post_logvars.append(post_logvar)
         post_losses.append(
@@ -291,7 +302,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
                 "posterior": _split_layers(post_list),
             }
         )
-        layered_kl_losses.append(model.get_layered_kl(mean, variance, y))
 
         mean_scaled = scaler[0](mean_p)
         y_scaled = scaler[0](y)
@@ -406,7 +416,8 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 
 def benchmark_model(args, model_path: Path) -> None:
-    runtime, model_config, model_state, _model_class = load_checkpoint(model_path)
+
+    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 20)
     runtime.reduced_dataset = 1
 
     print(runtime)

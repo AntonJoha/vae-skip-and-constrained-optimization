@@ -405,7 +405,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
     def objective(trial: optuna.Trial) -> float:
         runtime = replace(
             base_runtime,
-            hidden_dim=trial.suggest_categorical("hidden_dim", [32, 64, 128]),
+            hidden_dim=trial.suggest_categorical("hidden_dim", [16, 32, 64, 128]),
             layers=trial.suggest_int(
                 "layers",
                 2,
