@@ -492,7 +492,7 @@ def parse_args() -> argparse.Namespace:
         help="Run baseline training instead of our model.",
     )
     parser.add_argument(
-        "--epochs", type=int, default=500, help="Number of training epochs."
+        "--epochs", type=int, default=100, help="Number of training epochs."
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
     parser.add_argument(
