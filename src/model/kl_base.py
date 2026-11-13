@@ -105,8 +105,8 @@ def _make_mlp(
 
 
 class KLBaseModel(nn.Module):
-    state_dropout = 0.2
-    layer_dropout = 0.2
+    state_dropout = 0.0
+    layer_dropout = 0.0
     logvar_clamp: tuple[float, float] | None = None
     combine_gaussians_mode = "product"
     posterior_reduce = "last"

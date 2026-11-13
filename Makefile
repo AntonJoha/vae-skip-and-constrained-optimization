@@ -8,6 +8,21 @@ long_horizon = 100
 _: tune  upper vae lower vae_no_warmup
 
 
+main:
+	python -m experiments.main --verbose --horizon 10 --batch_size 64 --hidden_dim 32 --layers 2 --epochs 50 --beta 0.4 --learning_rate 0.01 --skip_connection
+
+vae_test:
+	python -m experiments.main --verbose --horizon 10 --batch_size 64 --hidden_dim 32 --layers 2 --epochs 50 --beta 0.4 --learning_rate 0.01 --vae_baseline --skip_connection
+
+
+ranged_test:
+	python -m experiments.main --verbose --horizon 10 --batch_size 64 --hidden_dim 32 --layers 2 --epochs 50 --beta 0.4 --learning_rate 0.01 --range --skip_connection
+
+
+
+
+
+
 test:
 	python -m experiments.main --verbose --tune --horizon 10
 

@@ -13,9 +13,9 @@ TDLGMConfig = SeriesConfig
 
 
 class Model(KLBaseModel):
-    state_dropout = 0.2
-    layer_dropout = 0.2
-    logvar_clamp = (-10.0, 2.0)
+    state_dropout = 0.0
+    layer_dropout = 0.0
+    logvar_clamp = (-15.0, 2.0)
     combine_gaussian = False
     posterior_reduce = "mean"
     reverse_posterior_list = False
