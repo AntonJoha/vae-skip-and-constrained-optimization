@@ -125,7 +125,6 @@ def train_model(
     _set_input_output_dim(runtime, train_loader)
 
     model = Baseline(runtime).to(device)
-    model.compile()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=runtime.learning_rate)
 
