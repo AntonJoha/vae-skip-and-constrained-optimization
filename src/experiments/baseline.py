@@ -100,6 +100,7 @@ def evaluate(model: nn.Module, loader: DataLoader) -> float:
     return sum(losses) / max(1, len(losses))
 
 
+@torch.no_grad()
 def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
     for x, y in loader:
