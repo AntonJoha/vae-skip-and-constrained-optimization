@@ -264,6 +264,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
     prior_latents, posterior_latents = [], []
     layered_kl_losses = []
+    layered_kl = None
 
     gen = 0#= evaluate_generalized_wasserstein(model, loader) #only thing that needs the gradient
     with torch.no_grad():
@@ -281,7 +282,10 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
             )
 
 
-            layered_kl_losses.append(model.get_layered_kl(mean, variance, y))
+            if layered_kl is None:
+                layered_kl = model.get_layered_kl(mean, variance, y)
+            else:
+                layered_kl += model.get_layered_kl(mean, variance, y)
 
             # get the right dimentions to everything
             post_mean = post_mean.squeeze()
@@ -333,13 +337,14 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
             fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
             """
 
-            xs.append(mean)
-            means.append(mean_p)
-            logvars.append(logvar)
-            ys.append(y)
+            xs.append(mean.detach().cpu())
+            means.append(mean_p.detach().cpu())
+            logvars.append(logvar.detach().cpu())
+            ys.append(y.detach().cpu())
 
         scrambled_loss = 0 #= evaluate_scrambled(model, loader)
-        layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
+        #layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
+        layered_kl /= len(loader)
         try:
             layer_target = model._layer_target(layered_kl)
             layer_residual = layered_kl - layer_target
