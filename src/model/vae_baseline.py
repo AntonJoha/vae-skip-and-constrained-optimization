@@ -57,7 +57,6 @@ class Model(KLBaseModel):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        self._layered_kl(prior_list, combined_posterior_list)
         loss = rec + self.kl_weight * kl_loss
 
         loss.backward()

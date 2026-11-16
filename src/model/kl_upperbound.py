@@ -74,8 +74,6 @@ class Model(KLBaseModel):
             y,
             mean_p,
             logvar_p,
-            prior_list=prior_list,
-            combined_posterior_list=combined_posterior_list,
         )
 
         layered_kl = self._layered_kl(prior_list, combined_posterior_list)
