@@ -157,10 +157,10 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
         y = y.to(device)
         mean, logvar = model(x)
 
-        mean_scaled = scaler[0](mean)
-        y_scaled = scaler[0](y)
-        logvar_scaled = scaler[1](logvar)
-        x_scaled = scaler[0](x)
+        mean_scaled = torch.from_numpy(scaler[0](mean.cpu())).to(device)
+        y_scaled = torch.from_numpy(scaler[0](y.cpu())).to(device)
+        logvar_scaled = torch.from_numpy(scaler[1](logvar.cpu())).to(device)
+        x_scaled = torch.from_numpy(scaler[0](x.cpu())).to(device)
 
         ys_scaled.append(y_scaled)
         xs_scaled.append(x_scaled)
@@ -220,7 +220,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
 @torch.no_grad()
 def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
     model.eval()
-    return 0
     count = 0
     total_wasserstein2_distance_score = 0.0
     for batch in loader:
@@ -309,10 +308,10 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
             }
         )
 
-        mean_scaled = scaler[0](mean_p)
-        y_scaled = scaler[0](y)
-        logvar_scaled = scaler[1](logvar)
-        x_scaled = scaler[0](mean)
+        mean_scaled = torch.from_numpy(scaler[0](mean_p.cpu())).to(device)
+        y_scaled = torch.from_numpy(scaler[0](y.cpu())).to(device)
+        logvar_scaled = torch.from_numpy(scaler[1](logvar.cpu())).to(device)
+        x_scaled = torch.from_numpy(scaler[0](mean.cpu())).to(device)
 
         ys_scaled.append(y_scaled)
         xs_scaled.append(x_scaled)
