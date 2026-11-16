@@ -357,27 +357,15 @@ def get_tsf_dataset(
 
     mean, std = _tsf_get_mean_std(df)
 
-    dataset = None
-    for row in df["series_value"]:
-        if dataset is None:
-            dataset = TimeSeriesDataset(
-                row, context_length=context_length, horizon=horizon, mean=mean, std=std
-            )
-        else:
-            dataset = ConcatDataset(
-                [
-                    dataset,
-                    TimeSeriesDataset(
-                        row,
-                        context_length=context_length,
-                        horizon=horizon,
-                        mean=mean,
-                        std=std,
-                    ),
-                ]
-            )
-
-    return dataset
+    datasets = [
+        TimeSeriesDataset(
+            row, context_length=context_length, horizon=horizon, mean=mean, std=std
+        )
+        for row in df["series_value"]
+    ]
+    if not datasets:
+        return None
+    return datasets[0] if len(datasets) == 1 else ConcatDataset(datasets)
 
 
 def _tsf_get_mean_std(df):

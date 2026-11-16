@@ -48,7 +48,7 @@ class Baseline(nn.Module):
         if x.ndim == 2:
             x = x.unsqueeze(-1)
         x, _ = self.lstm(x)
-        x = self.linear(x)[:, -1, :]
+        x = self.linear(x[:, -1, :])
 
         mean = self._to_output_shape(
             x[:, : self.config.output_dim * self.config.horizon]
