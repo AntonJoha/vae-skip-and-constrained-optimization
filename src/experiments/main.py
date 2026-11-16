@@ -185,6 +185,7 @@ def build_runtime_model(runtime: SeriesConfig) -> tuple[nn.Module, Adam, Adam]:
             "Parameters: %s",
             sum(p.numel() for p in model.parameters() if p.requires_grad),
         )
+    model.compile()
     return model, inner_optimizer, middle_optimizer
 
 
@@ -248,6 +249,8 @@ def train_model(
             epoch_losses.append(
                 model.train_step(mean, variance, y, middle_optimizer, inner_optimizer)
             )
+
+        model.outer_train_step(train_loader)
 
         val_loss = evaluate(model, val_loader)
 

@@ -67,13 +67,13 @@ class Model(KLBaseModel):
         inner_optimizer,
     ) -> float:
         self.train()
-        # Single latent pass reused for both inner and middle optimizer steps
+        inner_optimizer.zero_grad()
+
         mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
 
-        # Inner optimizer step: update based on prior KL
-        inner_optimizer.zero_grad()
+        
         _, prior_kl = self._compute_losses(
             y,
             mean_p,
@@ -84,8 +84,10 @@ class Model(KLBaseModel):
         prior_kl.backward()
         inner_optimizer.step()
 
-        # Middle optimizer step: reuse latent pass from above
         middle_optimizer.zero_grad()
+        mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
+            mean, variance, y, prior=False
+        )
         rec, _ = self._compute_losses(
             y,
             mean_p,
