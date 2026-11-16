@@ -115,6 +115,7 @@ def wasserstein2_distance(prior: torch.Tensor, posterior: torch.Tensor) -> torch
     return torch.sqrt(squared_distance).mean()
 
 
+@torch.no_grad()
 def evaluate_scrambled(model: nn.Module, loader: DataLoader):
     model.eval()
     losses = []
@@ -239,6 +240,7 @@ def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
             count += 1
     return total_wasserstein2_distance_score / count
 
+@torch.no_grad()
 def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     logger.info("Evaluating tDLGM model...")
 
