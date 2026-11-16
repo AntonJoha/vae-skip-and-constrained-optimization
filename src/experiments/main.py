@@ -67,18 +67,23 @@ def _to_python(value):
 def evaluate(model, loader: DataLoader) -> float:
     model.eval()
     losses = []
+    total = 0.0
+    count = 0
     for batch in loader:
         mean, variance, y = unpack_batch(batch)
         t_recon_loss, _ = model.compute_losses(mean, variance, y)
-        losses.append(t_recon_loss)
+        total += float(t_recon_loss)
+        count += 1
     model.train()
-    return sum(losses) / max(1, len(losses))
+    return total/count if count > 0 else torch.inf # worst possible loss if no batches were evaluated
 
 
 @torch.no_grad()
 def evaluate_posterior(model, loader: DataLoader) -> float:
     model.eval()
     losses = []
+    total = 0.0
+    count = 0
     for batch in loader:
         mean, variance,  y = unpack_batch(batch)
         t_recon_loss_q, _ = model.compute_losses(
@@ -87,15 +92,17 @@ def evaluate_posterior(model, loader: DataLoader) -> float:
             y,
             prior=False,
         )
-        losses.append(t_recon_loss_q)
+        total += float(t_recon_loss_q)
+        count += 1
     model.train()
-    return sum(losses) / max(1, len(losses))
+    return total/count if count > 0 else torch.inf # worst possible loss if no batches were evaluated
 
 
 @torch.no_grad()
 def evaluate_scrabbled(model, loader: DataLoader) -> float:
     model.eval()
-    losses = []
+    total = 0.0
+    count = 0
     for batch in loader:
         mean, varianece, y = unpack_batch(batch)
         y_random = y[torch.randperm(y.size(0))]  # Scramble the target values
@@ -106,23 +113,26 @@ def evaluate_scrabbled(model, loader: DataLoader) -> float:
             y_random,
             prior=False,
         )
-        losses.append(t_recon_loss_q)
+        total += float(t_recon_loss_q)
+        count += 1
     model.train()
-    return sum(losses) / max(1, len(losses))
+    return total/count if count > 0 else torch.inf # worst possible loss if no batches were evaluated
 
 
 @torch.no_grad()
 def evaluate_wasserstein(model, loader: DataLoader) -> float:
     model.eval()
-    wasserstein_losses = []
+    total = 0.0
+    count = 0
     for batch in loader:
         if random.random() < 0.9:
             continue  # Skip 90% of the batches to reduce computation
         mean, variance, y = unpack_batch(batch)
         t_wasserstein_loss = model.compute_wasserstein_distance(mean, variance, y)
-        wasserstein_losses.append(t_wasserstein_loss)
+        total += float(t_wasserstein_loss)
+        count += 1
     model.train()
-    return sum(wasserstein_losses) / max(1, len(wasserstein_losses))
+    return total/count if count > 0 else torch.inf # worst possible loss if no batches were evaluated
 
 
 def evaluate_generalized_wasserstein(model, loader: DataLoader) -> float:
@@ -134,10 +144,10 @@ def evaluate_generalized_wasserstein(model, loader: DataLoader) -> float:
             continue  # Subsample only after evaluating at least one batch.
         mean, variance, y = unpack_batch(batch)
         loss = model.compute_generalized_sliced_wasserstein_distance(mean, variance, y)
-        gsw_losses.append(float(loss.item()))
+        gsw_losses.append(float(loss.detach()))
         count += 1
     model.train()
-    return sum(gsw_losses) / max(1, len(gsw_losses))
+    return torch.stack(gsw_losses).mean().item() if gsw_losses else 0.0
 
 
 @torch.no_grad()
@@ -222,16 +232,19 @@ def train_model(
     stopped_due_to_divergence = False
     if runtime.verbose:
         log.info("Validation loss before training: %.5f", before)
+
     if reason := should_stop_training(before, before):
         log.warning("Stopping before training because %s: %.5f", reason, before)
         if trial is not None:
             raise TrialPruned()
         return before, before, best_val
 
+
     if save_to is not None:
         config_path = save_config(runtime, model, save_to, timestamp)
         if runtime.verbose:
             log.info("Saved configuration to %s", config_path)
+
 
     model.train()
     for epoch in range(train_epochs):
@@ -250,43 +263,65 @@ def train_model(
 
         model.outer_train_step(train_loader)
 
-        val_loss = evaluate(model, val_loader)
+        with torch.no_grad():
+            val_loss = evaluate(model, val_loader)
 
         # logging portion
 
         if runtime.verbose:
-            mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
-            test_loss = evaluate(model, test_loader)
-            val_posterior = evaluate_posterior(model, val_loader)
-            post = evaluate_posterior(model, train_loader)
-            prior = evaluate(model, train_loader)
-            layered_kl = evaluate_kl(model, train_loader)
-            log.info("========== Epoch %03d =========", epoch + 1)
-            log.info(
-                " Train loss: %.5f: NLL on val set: %.5f, NLL on test set: %.5f, Posterior NLL on val: %.5f",
-                mean_loss,
-                val_loss,
-                test_loss,
-                val_posterior,
-            )
-            log.info(
-                " Posterior NLL on train: %.5f",
-                post,
-            )
-            log.info(" Prior NLL on train: %.5f", prior)
-            log.info(" Layered KL per layer: %s", _to_python(layered_kl))
-            if hasattr(model, "_layer_target"):
-                layer_target = model._layer_target(layered_kl)
-                log.info(" Layer budget per layer: %s", _to_python(layer_target))
+            with torch.no_grad():
+                mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
+                #test_loss = evaluate(model, test_loader)
+                test_loss = 0.0
+                val_posterior = evaluate_posterior(model, val_loader)
+                post = evaluate_posterior(model, train_loader)
+                prior = evaluate(model, train_loader)
+                layered_kl = evaluate_kl(model, train_loader)
+                log.info("========== Epoch %03d =========", epoch + 1)
                 log.info(
-                    " Layer residual per layer: %s",
-                    _to_python(layered_kl - layer_target),
+                    " Train loss: %.5f: NLL on val set: %.5f, NLL on test set: %.5f, Posterior NLL on val: %.5f",
+                    mean_loss,
+                    val_loss,
+                    test_loss,
+                    val_posterior,
                 )
-            for attr in ("lambda_", "lambda_lower", "lambda_upper"):
-                if hasattr(model, attr):
+                log.info(
+                    " Posterior NLL on train: %.5f",
+                    post,
+                )
+                log.info(" Prior NLL on train: %.5f", prior)
+                log.info(" Layered KL per layer: %s", _to_python(layered_kl))
+                if hasattr(model, "_layer_target"):
+                    layer_target = model._layer_target(layered_kl)
+                    log.info(" Layer budget per layer: %s", _to_python(layer_target))
                     log.info(
-                        " %s per layer: %s", attr, _to_python(getattr(model, attr))
+                        " Layer residual per layer: %s",
+                        _to_python(layered_kl - layer_target),
                     )
+                for attr in ("lambda_", "lambda_lower", "lambda_upper"):
+                    if hasattr(model, attr):
+                        log.info(
+                            " %s per layer: %s", attr, _to_python(getattr(model, attr))
+                        )
+
+                if runtime.scrabbled_y:
+                    scrabbled_val_loss = evaluate_scrabbled(model, val_loader)
+                    scrabbled_train_loss = evaluate_scrabbled(model, train_loader)
+                    log.info(
+                        " Scrabbled NLL on train: %.5f, Scrabbled NLL on val: %.5f",
+                        scrabbled_train_loss,
+                        scrabbled_val_loss,
+                    )
+                    """
+                    wasserstein_val_loss = evaluate_wasserstein(model, val_loader)
+                    wasserstein_train_loss = evaluate_wasserstein(model, train_loader)
+                    log.info(
+                        " Wasserstein on train: %.5f, Wasserstein on val: %.5f",
+                        wasserstein_train_loss,
+                        wasserstein_val_loss,
+                    )
+                    """
+
             if runtime.grad_diagnostics:
                 count = 10
                 mean_t, variance_t,  y_t = None, None, None
@@ -304,28 +339,17 @@ def train_model(
 
                 model.print_gradients(mean_t, variance_t, y_t)
 
-            if runtime.scrabbled_y:
-                scrabbled_val_loss = evaluate_scrabbled(model, val_loader)
-                scrabbled_train_loss = evaluate_scrabbled(model, train_loader)
-                log.info(
-                    " Scrabbled NLL on train: %.5f, Scrabbled NLL on val: %.5f",
-                    scrabbled_train_loss,
-                    scrabbled_val_loss,
-                )
-                wasserstein_val_loss = evaluate_wasserstein(model, val_loader)
-                wasserstein_train_loss = evaluate_wasserstein(model, train_loader)
-                log.info(
-                    " Wasserstein on train: %.5f, Wasserstein on val: %.5f",
-                    wasserstein_train_loss,
-                    wasserstein_val_loss,
-                )
-                gsw_val_loss = evaluate_generalized_wasserstein(model, val_loader)
-                gsw_train_loss = evaluate_generalized_wasserstein(model, train_loader)
-                log.info(
-                    " Generalized Wasserstein on train: %.5f, Generalized Wasserstein on val: %.5f",
-                    gsw_train_loss,
-                    gsw_val_loss,
-                )
+
+            """
+            gsw_val_loss = evaluate_generalized_wasserstein(model, val_loader)
+            gsw_train_loss = evaluate_generalized_wasserstein(model, train_loader)
+            log.info(
+                " Generalized Wasserstein on train: %.5f, Generalized Wasserstein on val: %.5f",
+                gsw_train_loss,
+                gsw_val_loss,
+            )
+            """
+
 
         if reason := should_stop_training(before, val_loss):
             log.warning(
@@ -340,6 +364,7 @@ def train_model(
             break
 
         if val_loss < best_val:
+
             best_val = val_loss
             epochs_without_improvement = 0
             if save_to is not None:

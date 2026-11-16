@@ -265,84 +265,87 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     prior_latents, posterior_latents = [], []
     layered_kl_losses = []
 
-    gen = 0#= evaluate_generalized_wasserstein(model, loader)
-    wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
-    for batch in loader:
-        mean, variance, y = unpack_batch(batch)
+    gen = 0#= evaluate_generalized_wasserstein(model, loader) #only thing that needs the gradient
+    with torch.no_grad():
+        wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
+        for batch in loader:
+            mean, variance, y = unpack_batch(batch)
 
-        mean_p, logvar, *_ = model(mean, variance)
+            mean_p, logvar, *_ = model(mean, variance)
 
-        _, _, prior_list, _ = model.latent_pass(mean, variance, y=None, prior=True)
-        prior_latents.append(_split_layers(prior_list))
+            _, _, prior_list, _ = model.latent_pass(mean, variance, y=None, prior=True)
+            prior_latents.append(_split_layers(prior_list))
 
-        post_mean, post_logvar, post_prior_list, post_list = model.latent_pass(
-            mean, variance, y, prior=False
-        )
+            post_mean, post_logvar, post_prior_list, post_list = model.latent_pass(
+                mean, variance, y, prior=False
+            )
 
 
-        layered_kl_losses.append(model.get_layered_kl(mean, variance, y))
+            layered_kl_losses.append(model.get_layered_kl(mean, variance, y))
 
-        # get the right dimentions to everything
-        post_mean = post_mean.squeeze()
-        post_logvar = post_logvar.squeeze()
-        mean_p = mean_p.squeeze()
-        logvar = logvar.squeeze()
-        y = y.squeeze()
-        
-        if post_mean.ndim == 2:
-            post_mean = post_mean.unsqueeze(0)
-            post_logvar = post_logvar.unsqueeze(0)
-            mean_p = mean_p.unsqueeze(0)
-            logvar = logvar.unsqueeze(0)
-            y = y.unsqueeze(0)
+            # get the right dimentions to everything
+            post_mean = post_mean.squeeze()
+            post_logvar = post_logvar.squeeze()
+            mean_p = mean_p.squeeze()
+            logvar = logvar.squeeze()
+            y = y.squeeze()
+            
+            if post_mean.ndim == 2:
+                post_mean = post_mean.unsqueeze(0)
+                post_logvar = post_logvar.unsqueeze(0)
+                mean_p = mean_p.unsqueeze(0)
+                logvar = logvar.unsqueeze(0)
+                y = y.unsqueeze(0)
 
-        post_means.append(post_mean)
-        post_logvars.append(post_logvar)
-        post_losses.append(
-            float(model.nllLoss(post_mean, y, post_logvar.exp()))
-        )
-        post_mse_losses.append(float(mse_loss(post_mean, y).mean()))
-        posterior_latents.append(
-            {
-                "prior": _split_layers(post_prior_list),
-                "posterior": _split_layers(post_list),
-            }
-        )
+            post_means.append(post_mean.detach().cpu())
+            post_logvars.append(post_logvar.detach().cpu())
+            post_losses.append(
+                float(model.nllLoss(post_mean, y, post_logvar.exp()))
+            )
+            post_mse_losses.append(float(mse_loss(post_mean, y).mean()))
+            posterior_latents.append(
+                {
+                    "prior": _split_layers(post_prior_list),
+                    "posterior": _split_layers(post_list),
+                }
+            )
 
-        mean_scaled = scaler[0](mean_p)
-        y_scaled = scaler[0](y)
-        logvar_scaled = scaler[1](logvar)
-        x_scaled = scaler[0](mean)
+            mean_scaled = scaler[0](mean_p).detach().cpu()
+            y_scaled = scaler[0](y).detach().cpu()
+            logvar_scaled = scaler[1](logvar).detach().cpu()
+            x_scaled = scaler[0](mean).detach().cpu()
 
-        ys_scaled.append(y_scaled)
-        xs_scaled.append(x_scaled)
-        means_scaled.append(mean_scaled)
-        logvars_scaled.append(logvar_scaled)
+            ys_scaled.append(y_scaled.detach().cpu())
+            xs_scaled.append(x_scaled.detach().cpu())
+            means_scaled.append(mean_scaled.detach().cpu())
+            logvars_scaled.append(logvar_scaled.detach().cpu())
 
-        losses.append(float(model.nllLoss(mean_p, y, logvar.exp())))
-        losses_position.append(nll_position(mean_p, y, logvar))
+            losses.append(float(model.nllLoss(mean_p, y, logvar.exp())))
+            losses_position.append(nll_position(mean_p, y, logvar).detach().cpu())
 
-        mse_losses.append(float(mse_loss(mean_p, y).mean()))
-        mse_losses_position.append(mse_position(mean_p, y))
+            mse_losses.append(float(mse_loss(mean_p, y).mean()))
+            mse_losses_position.append(mse_position(mean_p, y).detach().cpu())
 
-        ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
-        ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-        fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
-        fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
+            """
+            ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
+            ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
+            fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
+            fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
+            """
 
-        xs.append(mean)
-        means.append(mean_p)
-        logvars.append(logvar)
-        ys.append(y)
+            xs.append(mean)
+            means.append(mean_p)
+            logvars.append(logvar)
+            ys.append(y)
 
-    scrambled_loss = 0 #= evaluate_scrambled(model, loader)
-    layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
-    try:
-        layer_target = model._layer_target(layered_kl)
-        layer_residual = layered_kl - layer_target
-    except:
-        layer_target = None
-        layer_residual = None
+        scrambled_loss = 0 #= evaluate_scrambled(model, loader)
+        layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
+        try:
+            layer_target = model._layer_target(layered_kl)
+            layer_residual = layered_kl - layer_target
+        except:
+            layer_target = None
+            layer_residual = None
 
 
     return {
@@ -376,16 +379,16 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "mse_losses_position": mse_losses_position,
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
-        "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)
-        / max(1, len(ade_losses_position)),
-        "ade_losses": ade_losses,
-        "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
-        "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)
-        / max(1, len(fde_losses_position)),
-        "fde_losses": fde_losses,
-        "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
+        #"ade_losses_position": ade_losses_position,
+        #"ade_loss_position": sum(ade_losses_position)
+        #/ max(1, len(ade_losses_position)),
+        #"ade_losses": ade_losses,
+        #"ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
+        #"fde_losses_position": fde_losses_position,
+        #"fde_loss_position": sum(fde_losses_position)
+        #/ max(1, len(fde_losses_position)),
+        #"fde_losses": fde_losses,
+        #"fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
         "scrambled_loss": scrambled_loss,
         "generalized_wasserstein_distance_score": gen,
     }
@@ -396,7 +399,7 @@ def _split_layers(layers: list) -> list:
     for l in layers:
         for layer in l:
             mean, logvar = layer.chunk(2, dim=-1)
-            out.append({"mean": mean, "logvar": logvar})
+            out.append({"mean": mean.detach().cpu(), "logvar": logvar.detach().cpu()})
     return out
 
 
