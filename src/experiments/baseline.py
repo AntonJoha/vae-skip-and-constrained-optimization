@@ -100,6 +100,7 @@ def evaluate(model: nn.Module, loader: DataLoader) -> float:
     return sum(losses) / max(1, len(losses))
 
 
+@torch.no_grad()
 def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
     for x, y in loader:
@@ -125,7 +126,6 @@ def train_model(
     _set_input_output_dim(runtime, train_loader)
 
     model = Baseline(runtime).to(device)
-    model.compile()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=runtime.learning_rate)
 
