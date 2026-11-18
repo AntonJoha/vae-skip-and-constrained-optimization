@@ -555,6 +555,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--set_lambda", type=float, default=None)
     parser.add_argument("--lambda_scaler", type=float, default=0.1)
     parser.add_argument("--vae_no_warmup", action="store_true", default=False)
+    parser.add_argument(
+        "--cyclical_kl",
+        action="store_true",
+        help="Use cyclical KL annealing with --vae_baseline.",
+    )
+    parser.add_argument(
+        "--kl_cycle_epochs",
+        type=int,
+        default=20,
+        help="Epochs per KL cycle (at least 2; default: 20).",
+    )
+    parser.add_argument(
+        "--kl_cycle_ratio",
+        type=float,
+        default=0.5,
+        help="Fraction of each cycle spent ramping the KL weight (default: 0.5).",
+    )
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 

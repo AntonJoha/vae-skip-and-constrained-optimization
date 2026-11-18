@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 
@@ -24,11 +25,19 @@ class Model(KLBaseModel):
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
-        warmup_denom = max(1, self.kl_warmup_epochs - 1)
-        warmup_progress = min(1.0, float(epoch) / float(warmup_denom))
-        self.kl_weight = self.beta * warmup_progress
+        if self.config.cyclical_kl:
+            cycle_epochs = self.config.kl_cycle_epochs
+            ramp_epochs = min(
+                cycle_epochs - 1,
+                max(1, math.ceil(cycle_epochs * self.config.kl_cycle_ratio)),
+            )
+            progress = min(1.0, (epoch % cycle_epochs) / ramp_epochs)
+        else:
+            warmup_denom = max(1, self.kl_warmup_epochs - 1)
+            progress = min(1.0, float(epoch) / float(warmup_denom))
+        self.kl_weight = self.beta * progress
         log.info(
-            "Epoch %d: KL warmup weight set to %.4f",
+            "Epoch %d: KL weight set to %.4f",
             epoch,
             self.kl_weight,
         )

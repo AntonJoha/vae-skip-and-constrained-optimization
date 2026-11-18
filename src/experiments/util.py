@@ -108,6 +108,21 @@ class SeriesConfig(BaselineConfig):
     lambda_scaler: float = 1.0
     kl_warmup_epochs: int = 20
     vae_no_warmup: bool = False
+    cyclical_kl: bool = False
+    kl_cycle_epochs: int = 20
+    kl_cycle_ratio: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.cyclical_kl:
+            if not self.vae_baseline or self.baseline or self.vae_no_warmup:
+                raise ValueError(
+                    "cyclical_kl requires vae_baseline and is incompatible with "
+                    "baseline and vae_no_warmup"
+                )
+            if self.kl_cycle_epochs < 2:
+                raise ValueError("kl_cycle_epochs must be at least 2")
+            if not 0 < self.kl_cycle_ratio <= 1:
+                raise ValueError("kl_cycle_ratio must be in (0, 1]")
 
 
 def checkpoint_payload(model: nn.Module, runtime: SeriesConfig) -> dict[str, object]:
