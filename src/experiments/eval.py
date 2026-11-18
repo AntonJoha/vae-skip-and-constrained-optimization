@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 
 from data.data import get_scale_constant, make_dataloaders
 from experiments.baseline import Baseline
-from experiments.main import evaluate_generalized_wasserstein, unpack_batch
+from experiments.main import unpack_batch
 from experiments.util import SeriesConfig, configure_logging, load_checkpoint
 from model import (
     Lower_Model,
@@ -249,12 +249,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     mse_losses = []
     mse_losses_position = []
     losses_position = []
-    ade_losses_position = []
-    fde_losses_position = []
-    fde_losses = []
-    ade_losses = []
-    wasserstein2_losses = []
-    wasserstein2_similarity_losses = []
 
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
@@ -263,12 +257,11 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     logvars_scaled = []
     post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
     prior_latents, posterior_latents = [], []
-    layered_kl_losses = []
     layered_kl = None
 
     gen = 0#= evaluate_generalized_wasserstein(model, loader) #only thing that needs the gradient
     with torch.no_grad():
-        wasserstein2_distance_score = evaluate_wasserstein_tdlgm(model, loader)
+        evaluate_wasserstein_tdlgm(model, loader)
         for batch in loader:
             mean, variance, y = unpack_batch(batch)
 
@@ -448,8 +441,6 @@ def benchmark_model(args, model_path: Path) -> None:
             model = Upper_Model(model_config).to(device)
         elif runtime.vae_baseline:
             model = VAE_Baseline_Model(model_config).to(device)
-        elif runtime.inner_kl:
-            model = Inner_Reg_Model(model_config).to(device)
         elif runtime.lower:
             model = Lower_Model(model_config).to(device)
         elif runtime.range_bound:
@@ -466,9 +457,6 @@ def benchmark_model(args, model_path: Path) -> None:
 
     print(
         f"Model: {runtime.model_name}, Checkpoint: {model_path}, Test Loss: {res['loss']:.5f}, NLL Position Loss: {res['loss_position']}, Test MSE Loss: {res['mse_loss']:.5f} MSE Position Loss: {res['mse_loss_position']}"
-    )
-    print(
-        f"Test ADE Position Loss: {res['ade_loss_position']:.5f}, Test FDE Position Loss: {res['fde_loss_position']:.5f}, Test ADE Loss: {res['ade_loss']:.5f}, Test FDE Loss: {res['fde_loss']:.5f}"
     )
     print("Scrambled Loss: ", res["scrambled_loss"])
     print("Generalised slized wasserstein", res["generalized_wasserstein_distance_score"])
