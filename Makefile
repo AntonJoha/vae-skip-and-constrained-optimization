@@ -5,7 +5,7 @@ mid_horizon = 50
 long_horizon = 100
 
 
-_: tune  vae vae_no_warmup range
+_: tune vae vae_no_warmup range
 
 
 main:
@@ -21,62 +21,8 @@ ranged_test:
 
 
 
-
-
-test:
-	python -m experiments.main --verbose --tune --horizon 10
-
-eval_tune_short="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-092907.pt"
-eval_tune_mid="artifacts_dev/tdlgm/checkpoint_epochbest_20261028-223040.pt"
-eval_tune_long="artifacts_dev/tdlgm/checkpoint_epochbest_20261029-045814.pt"
-
-
-eval_upper_short="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-092907.pt"
-eval_upper_mid="artifacts_dev/tdlgm/checkpoint_epochbest_20261028-223040.pt"
-eval_upper_long="artifacts_dev/tdlgm/checkpoint_epochbest_20261028-004821.pt"
-
-
-eval_lower_short="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-092907.pt"
-eval_lower_mid="artifacts_dev/tdlgm/checkpoint_epochbest_20261028-223041.pt"
-eval_lower_long="artifacts_dev/tdlgm/checkpoint_epochbest_20261029-030930.pt"
-
-
-
-
-eval_vae_short="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-092907.pt"
-eval_vae_mid="artifacts_dev/tdlgm/checkpoint_epochbest_20261030-121311.pt"
-eval_vae_long="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-215153.pt"
-
-
-
-
-
-eval_range_short="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-092907.pt"
-eval_range_mid="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-174304.pt"
-eval_range_long="artifacts_dev/tdlgm/checkpoint_epochbest_20261028-034154.pt"
-
-
-
-
-eval_vae_no_warmup_short="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-092907.pt"
-eval_vae_no_warmup_mid="artifacts_dev/tdlgm/checkpoint_epochbest_20261028-223040.pt"
-eval_vae_no_warmup_long="artifacts_dev/tdlgm/checkpoint_epochbest_20261027-170122.pt"
-
-
-
-
-
-
 eval_tune:
 	python -m experiments.eval --verbose  --checkpoint_path artifacts_dev/tdlgm/checkpoint_epochbest_20261112-125659.pt
-
-
-eval_upper:
-	python -m experiments.eval --verbose  --checkpoint_path $(eval_upper_short)
-
-
-eval_lower:
-	python -m experiments.eval --verbose  --checkpoint_path $(eval_lower_short)
 
 
 eval_vae:
@@ -98,19 +44,6 @@ tune: folder
 	python -m experiments.main --verbose --tune --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_short_.log
 	#python -m experiments.main --verbose --tune --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_mid.log
 	#python -m experiments.main --verbose --tune --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/tune/tune_long.log
-
-
-upper: folder
-	sleep 123
-	python -m experiments.main --verbose --tune --upper --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_short_.log
-	#python -m experiments.main --verbose --tune --upper --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_mid.log
-	#python -m experiments.main --verbose --tune --upper --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/upper/upper_long.log
-
-lower: folder
-	sleep 40
-	python -m experiments.main --verbose --tune --lower --horizon $(short_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_short_.log
-	#python -m experiments.main --verbose --tune --lower --horizon $(mid_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_mid.log
-	#python -m experiments.main --verbose --tune --lower --horizon $(long_horizon) --grad_diagnostics --scrabbled_y 2>&1 | tee results/lower/lower_long.log
 
 
 range: folder
