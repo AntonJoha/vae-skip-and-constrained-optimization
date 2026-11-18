@@ -468,6 +468,12 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
             skip_connection=trial.suggest_categorical("skip_connection", [True]),
         )
+        if runtime.cyclical_kl:
+            runtime = replace(
+                runtime,
+                kl_cycle_epochs=trial.suggest_int("kl_cycle_epochs", 2, 50),
+                kl_cycle_ratio=trial.suggest_float("kl_cycle_ratio", 0.1, 0.9),
+            )
         runtime = replace(runtime, lr_lambda=runtime.learning_rate/10)
         runtime = replace(runtime, rho_lr=runtime.learning_rate/10)
         log.info("BEFORE")
