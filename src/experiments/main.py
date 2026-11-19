@@ -547,6 +547,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--latent_dim", type=int, default=16)
     parser.add_argument("--hidden_dim", type=int, default=16)
     parser.add_argument("--layers", type=int, default=2)
+    parser.add_argument("--seq_len", type=int, default=10)
     parser.add_argument("--beta", type=float, default=1)
     parser.add_argument("--rho", type=float, default=2.0)
     parser.add_argument("--batch_size", type=int, default=64)

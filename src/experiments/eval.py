@@ -424,7 +424,7 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 def benchmark_model(args, model_path: Path) -> None:
 
-    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 100)
+    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 10)
     runtime.reduced_dataset = 1
 
     print(runtime)
