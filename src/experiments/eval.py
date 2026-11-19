@@ -348,11 +348,11 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
 
     return {
         "x": xs,
-        "x_scaled": xs_scaled,
+        #"x_scaled": xs_scaled,
         "mean": means,
         "logvar": logvars,
-        "mean_scaled": means_scaled,
-        "logvar_scaled": logvars_scaled,
+        #"mean_scaled": means_scaled,
+        #"logvar_scaled": logvars_scaled,
         "y": ys,
         "mean_posterior": post_means,
         "logvar_posterior": post_logvars,
@@ -367,7 +367,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "lambda_lower": getattr(model, "lambda_lower", None),
         "lambda_upper": getattr(model, "lambda_upper", None),
         "layer_budget_weights": model._layer_budget_weights(layered_kl),
-        "y_scaled": ys_scaled,
+        #"y_scaled": ys_scaled,
         "losses": losses,
         "losses_position": losses_position,
         "loss": sum(losses) / max(1, len(losses)),
