@@ -258,6 +258,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
+            verbose=False,
         )
         _, after = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return after
@@ -265,12 +266,18 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
     study = optuna.create_study(
         direction="minimize", sampler=optuna.samplers.TPESampler(seed=base_runtime.seed)
     )
+    if base_runtime.verbose:
+        logger.info(
+            "Starting hyperparameter tuning: %d trials, %d epochs/trial",
+            base_runtime.tuning_trials,
+            base_runtime.tuning_epochs,
+        )
     study.optimize(objective, n_trials=base_runtime.tuning_trials)
 
     if base_runtime.verbose:
         logger.info("Best hyperparameters: %s", study.best_trial.params)
         logger.info("Best validation loss during tuning: %.5f", study.best_value)
-    return replace(base_runtime, **study.best_trial.params)
+    return replace(base_runtime, **study.best_trial.params, verbose=base_runtime.verbose)
 
 
 def baseline_train(runtime: SeriesConfig) -> Path:
@@ -278,6 +285,9 @@ def baseline_train(runtime: SeriesConfig) -> Path:
     runtime.model_name = "baseline"
 
     runtime = tune_hyperparameters(runtime) if runtime.tune else runtime
+    if runtime.tune:
+        runtime = replace(runtime, verbose=True)
+        logger.info("Using tuned hyperparameters for the final training run: %s", runtime)
     artifact_dir = Path(runtime.artifact_dir)
     train_model(runtime, save_to=artifact_dir)
     return artifact_dir
