@@ -443,7 +443,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             learning_rate=trial.suggest_float(
                 "learning_rate",
                 1e-6,
-                5e-2,
+                5e-3,
                 log=True,
             ),
             rho=trial.suggest_float(
@@ -463,7 +463,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
-            beta=trial.suggest_float("beta", 1e-3, 1, log=True),
+            beta=trial.suggest_float("beta", 1e-3, 10, log=True),
             kl_warmup_epochs=trial.suggest_int("kl_warmup_epochs", 0, 50),
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
             skip_connection=trial.suggest_categorical("skip_connection", [True]),
