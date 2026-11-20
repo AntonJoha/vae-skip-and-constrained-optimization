@@ -44,6 +44,22 @@ MODEL_FACTORIES = (
 )
 
 
+def model_class_label(runtime: SeriesConfig) -> str:
+    if runtime.upper:
+        return "upper"
+    if runtime.lower:
+        return "lower"
+    if runtime.range_bound:
+        return "range"
+    if runtime.vrnn:
+        return "vrnn"
+    if runtime.vae_baseline:
+        return "vae_no_baseline" if runtime.vae_no_warmup else "vae"
+    if runtime.baseline:
+        return "baseline"
+    return "regularizer"
+
+
 def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     x, y = batch
     mean, variance = x[0], x[1]
@@ -249,6 +265,7 @@ def train_model(
     model.train()
     for epoch in range(train_epochs):
         log.info("Starting epoch %03d/%03d", epoch + 1, train_epochs)
+        print(f"[tuning] Model class: {model_class_label(runtime)} | epoch {epoch + 1}/{train_epochs}")
 
         # training portion
 
