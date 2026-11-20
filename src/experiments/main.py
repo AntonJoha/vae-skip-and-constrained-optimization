@@ -463,7 +463,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
-            beta=trial.suggest_float("beta", 1e-2, 1),
+            beta=trial.suggest_float("beta", 1e-3, 1, log=True),
             kl_warmup_epochs=trial.suggest_int("kl_warmup_epochs", 0, 50),
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
             skip_connection=trial.suggest_categorical("skip_connection", [True]),
@@ -487,13 +487,18 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
     study = optuna.create_study(
         direction="minimize",
         sampler=optuna.samplers.TPESampler(seed=base_runtime.seed),
-        pruner=optuna.pruners.MedianPruner(),
+        pruner=optuna.pruners.MedianPruner(n_startup_trial=5, n_warmup_steps=5),
     )
     study.optimize(objective, n_trials=base_runtime.tuning_trials)
 
     log.info("Best hyperparameters: %s", study.best_trial.params)
     log.info("Best validation loss during tuning: %.5f", study.best_value)
-    return replace(base_runtime, **study.best_trial.params)
+    
+    to_return = replace(base_runtime, **study.best_trial.params)
+    if to_return.vae_no_warmup:
+        to_return = replace(to_return, kl_warmup_epochs=0)
+
+    return to_return
 
 
 def train(base_runtime: SeriesConfig) -> Path:
@@ -523,7 +528,7 @@ def parse_args() -> argparse.Namespace:
         help="Run baseline training instead of our model.",
     )
     parser.add_argument(
-        "--epochs", type=int, default=100, help="Number of training epochs."
+        "--epochs", type=int, default=500, help="Number of training epochs."
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
     parser.add_argument(
