@@ -487,7 +487,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
     study = optuna.create_study(
         direction="minimize",
         sampler=optuna.samplers.TPESampler(seed=base_runtime.seed),
-        pruner=optuna.pruners.MedianPruner(n_startup_trial=5, n_warmup_steps=5),
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5),
     )
     study.optimize(objective, n_trials=base_runtime.tuning_trials)
 
