@@ -480,7 +480,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
                 1e-2,
                 log=True,
             ),
-            beta=trial.suggest_float("beta", 1e-3, 10, log=True),
+            beta=trial.suggest_float("beta", 1e-2, 10, log=True),
             kl_warmup_epochs=trial.suggest_int("kl_warmup_epochs", 0, 50),
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
             skip_connection=trial.suggest_categorical("skip_connection", [True]),
