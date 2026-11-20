@@ -467,6 +467,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             kl_warmup_epochs=trial.suggest_int("kl_warmup_epochs", 0, 50),
             lambda_min=trial.suggest_categorical("lambda_min", [0.5, 1, 5]),
             skip_connection=trial.suggest_categorical("skip_connection", [True]),
+            verbose=False,
         )
         if runtime.cyclical_kl:
             runtime = replace(
@@ -476,11 +477,8 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
             )
         runtime = replace(runtime, lr_lambda=runtime.learning_rate/10)
         runtime = replace(runtime, rho_lr=runtime.learning_rate/10)
-        log.info("BEFORE")
         if runtime.vae_no_warmup:
-            log.info("I AM HERE")
             runtime = replace(runtime, kl_warmup_epochs=0)
-        log.info("AFTER")
         _, _, best = train_model(runtime, epochs=runtime.tuning_epochs, trial=trial)
         return best
 
@@ -489,12 +487,19 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
         sampler=optuna.samplers.TPESampler(seed=base_runtime.seed),
         pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5),
     )
+    if base_runtime.verbose:
+        log.info(
+            "Starting hyperparameter tuning: %d trials, %d epochs/trial",
+            base_runtime.tuning_trials,
+            base_runtime.tuning_epochs,
+        )
     study.optimize(objective, n_trials=base_runtime.tuning_trials)
 
     log.info("Best hyperparameters: %s", study.best_trial.params)
     log.info("Best validation loss during tuning: %.5f", study.best_value)
-    
+
     to_return = replace(base_runtime, **study.best_trial.params)
+    to_return = replace(to_return, verbose=base_runtime.verbose)
     if to_return.vae_no_warmup:
         to_return = replace(to_return, kl_warmup_epochs=0)
 
@@ -509,7 +514,10 @@ def train(base_runtime: SeriesConfig) -> Path:
         )
 
     runtime = tune_hyperparameters(base_runtime) if base_runtime.tune else base_runtime
-    if base_runtime.verbose and not base_runtime.tune:
+    if base_runtime.tune:
+        runtime = replace(runtime, verbose=True)
+        log.info("Using tuned hyperparameters for the final training run: %s", runtime)
+    elif base_runtime.verbose:
         log.info("Skipping hyperparameter tuning.")
 
     artifact_dir = Path(base_runtime.artifact_dir)
