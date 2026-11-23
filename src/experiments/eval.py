@@ -102,19 +102,6 @@ def mse_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return loss
 
 
-def wasserstein2_distance(prior: torch.Tensor, posterior: torch.Tensor) -> torch.Tensor:
-    prior_mean, prior_logvar = prior.chunk(2, dim=-1)
-    posterior_mean, posterior_logvar = posterior.chunk(2, dim=-1)
-
-    prior_std = torch.exp(0.5 * prior_logvar)
-    posterior_std = torch.exp(0.5 * posterior_logvar)
-
-    squared_distance = (
-        (prior_mean - posterior_mean).pow(2) + (prior_std - posterior_std).pow(2)
-    ).sum(dim=-1)
-    return torch.sqrt(squared_distance).mean()
-
-
 def evaluate_scrambled(model: nn.Module, loader: DataLoader):
     model.eval()
     losses = []
@@ -142,10 +129,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
     mse_losses = []
     mse_losses_position = []
     losses_position = []
-    ade_losses_position = []
-    fde_losses_position = []
-    fde_losses = []
-    ade_losses = []
 
     xs, means, logvars, ys = [], [], [], []
     ys_scaled = []
@@ -173,10 +156,6 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
         mse_losses.append(float(mse_loss(mean, y.squeeze(-1)).mean()))
         mse_losses_position.append(mse_position(mean, y.squeeze(-1)))
 
-        ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
-        ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-        fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
-        fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
 
         xs.append(x)
         means.append(mean)
@@ -203,42 +182,8 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
         "mse_losses_position": mse_losses_position,
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
-        "ade_losses_position": ade_losses_position,
-        "ade_loss_position": sum(ade_losses_position)
-        / max(1, len(ade_losses_position)),
-        "ade_losses": ade_losses,
-        "ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
-        "fde_losses_position": fde_losses_position,
-        "fde_loss_position": sum(fde_losses_position)
-        / max(1, len(fde_losses_position)),
-        "fde_losses": fde_losses,
-        "fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
         "scrambled_loss": scrambled_loss,
     }
-
-
-@torch.no_grad()
-def evaluate_wasserstein_tdlgm(model: nn.Module, loader: DataLoader, times=100):
-    model.eval()
-    return 0
-    count = 0
-    total_wasserstein2_distance_score = 0.0
-    for batch in loader:
-        if count > 0 and random.random() > 0.1:
-            continue
-        x, y = unpack_batch(batch)
-
-        for _ in range(times):
-            mean, logvar, *_ = model._latent_pass(x, y)
-            y_temp = mean + torch.randn_like(mean) * logvar.exp().sqrt()
-            y_temp = y_temp.unsqueeze(-1) if y_temp.ndim == 2 else y_temp
-            
-            wasserstein2_distance_score = model.compute_wasserstein_distance(x, y_temp)
-            if wasserstein2_distance_score > 1000 or wasserstein2_distance_score  == torch.nan:
-                model.compute_wasserstein_distance_log(x, y_temp)
-            total_wasserstein2_distance_score += wasserstein2_distance_score.item()
-            count += 1
-    return total_wasserstein2_distance_score / count
 
 def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     logger.info("Evaluating tDLGM model...")
@@ -258,10 +203,11 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
     prior_latents, posterior_latents = [], []
     layered_kl = None
+    mutual_info = None
+    density_missmatch = None
+    layered_kl_counter = 0
 
-    gen = 0#= evaluate_generalized_wasserstein(model, loader) #only thing that needs the gradient
     with torch.no_grad():
-        evaluate_wasserstein_tdlgm(model, loader)
         for batch in loader:
             mean, variance, y = unpack_batch(batch)
 
@@ -274,11 +220,17 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
                 mean, variance, y, prior=False
             )
 
+            if random.random() < 0.1 or layered_kl is None:
+                layered_kl_counter += 1
+                if layered_kl is None:
+                    layered_kl = model.get_first_step_layered_kl(mean, variance, y)
+                    density_missmatch = model.get_density_missmatch(mean, variance, y)
+                    mutual_info = model.get_mutual_info(mean, variance, y)
+                else:
+                    layered_kl += model.get_first_step_layered_kl(mean, variance, y)
+                    mutual_info += model.get_mutual_info(mean, variance, y)
+                    density_missmatch += model.get_density_missmatch(mean, variance, y)
 
-            if layered_kl is None:
-                layered_kl = model.get_layered_kl(mean, variance, y)
-            else:
-                layered_kl += model.get_layered_kl(mean, variance, y)
 
             # get the right dimentions to everything
             post_mean = post_mean.squeeze()
@@ -307,15 +259,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
                 }
             )
 
-            mean_scaled = scaler[0](mean_p).detach().cpu()
-            y_scaled = scaler[0](y).detach().cpu()
-            logvar_scaled = scaler[1](logvar).detach().cpu()
-            x_scaled = scaler[0](mean).detach().cpu()
 
-            ys_scaled.append(y_scaled.detach().cpu())
-            xs_scaled.append(x_scaled.detach().cpu())
-            means_scaled.append(mean_scaled.detach().cpu())
-            logvars_scaled.append(logvar_scaled.detach().cpu())
 
             losses.append(float(model.nllLoss(mean_p, y, logvar.exp())))
             losses_position.append(nll_position(mean_p, y, logvar).detach().cpu())
@@ -323,20 +267,37 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
             mse_losses.append(float(mse_loss(mean_p, y).mean()))
             mse_losses_position.append(mse_position(mean_p, y).detach().cpu())
 
-            """
-            ade_losses_position.append(ade_position(mean_scaled, y_scaled.squeeze(-1)))
-            ade_losses.append(float(ade_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-            fde_losses_position.append(fde_position(mean_scaled, y_scaled.squeeze(-1)))
-            fde_losses.append(float(fde_position(mean_scaled, y_scaled.squeeze(-1)).mean()))
-            """
 
             xs.append(mean.detach().cpu())
             means.append(mean_p.detach().cpu())
             logvars.append(logvar.detach().cpu())
             ys.append(y.detach().cpu())
+            if layered_kl_counter > 10:
+                break
+
+        
+        if layered_kl_counter > 0 and layered_kl is not None and mutual_info is not None and density_missmatch is not None:
+            layered_kl /= layered_kl_counter
+            layered_first_step = layered_kl.mean().item()
+            mutual_info /= layered_kl_counter
+            density_missmatch /= layered_kl_counter
+        
+            print("Layered KL: ", layered_first_step)
+            print("Mutual Info: ", mutual_info)
+            print("Density Missmatch: ", density_missmatch)
+            decomposition = mutual_info + density_missmatch
+            residual = layered_first_step - decomposition
+            relative_error = abs(residual) / max(abs(layered_first_step), 1e-12)
+            closure_ratio = decomposition / max(abs(layered_first_step), 1e-12)
+            print("Layered KL:", layered_first_step)
+            print("Mutual Info:", mutual_info)
+            print("Density Mismatch:", density_missmatch)
+            print("MI + mismatch:", decomposition)
+            print("Residual:", residual)
+            print("Relative error:", relative_error)
+            print("Closure ratio:", closure_ratio)
 
         scrambled_loss = 0 #= evaluate_scrambled(model, loader)
-        #layered_kl = sum(layered_kl_losses) / max(1, len(layered_kl_losses))
         layered_kl /= len(loader)
         try:
             layer_target = model._layer_target(layered_kl)
@@ -348,11 +309,8 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
 
     return {
         "x": xs,
-        #"x_scaled": xs_scaled,
         "mean": means,
         "logvar": logvars,
-        #"mean_scaled": means_scaled,
-        #"logvar_scaled": logvars_scaled,
         "y": ys,
         "mean_posterior": post_means,
         "logvar_posterior": post_logvars,
@@ -367,7 +325,6 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "lambda_lower": getattr(model, "lambda_lower", None),
         "lambda_upper": getattr(model, "lambda_upper", None),
         "layer_budget_weights": model._layer_budget_weights(layered_kl),
-        #"y_scaled": ys_scaled,
         "losses": losses,
         "losses_position": losses_position,
         "loss": sum(losses) / max(1, len(losses)),
@@ -377,18 +334,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
         "mse_losses_position": mse_losses_position,
         "mse_loss_position": sum(mse_losses_position)
         / max(1, len(mse_losses_position)),
-        #"ade_losses_position": ade_losses_position,
-        #"ade_loss_position": sum(ade_losses_position)
-        #/ max(1, len(ade_losses_position)),
-        #"ade_losses": ade_losses,
-        #"ade_loss": sum(ade_losses) / max(1, len(ade_losses)),
-        #"fde_losses_position": fde_losses_position,
-        #"fde_loss_position": sum(fde_losses_position)
-        #/ max(1, len(fde_losses_position)),
-        #"fde_losses": fde_losses,
-        #"fde_loss": sum(fde_losses) / max(1, len(fde_losses)),
         "scrambled_loss": scrambled_loss,
-        "generalized_wasserstein_distance_score": gen,
     }
 
 
@@ -459,7 +405,6 @@ def benchmark_model(args, model_path: Path) -> None:
         f"Model: {runtime.model_name}, Checkpoint: {model_path}, Test Loss: {res['loss']:.5f}, NLL Position Loss: {res['loss_position']}, Test MSE Loss: {res['mse_loss']:.5f} MSE Position Loss: {res['mse_loss_position']}"
     )
     print("Scrambled Loss: ", res["scrambled_loss"])
-    print("Generalised slized wasserstein", res["generalized_wasserstein_distance_score"])
 
     return remove_pytorch(res)
 
