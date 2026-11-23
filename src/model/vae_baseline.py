@@ -71,7 +71,7 @@ class Model(KLBaseModel):
         loss.backward()
         optimizer.step()
 
-        return float(loss.detach())
+        return loss.detach()
 
     def print_gradients(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor):
         mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(

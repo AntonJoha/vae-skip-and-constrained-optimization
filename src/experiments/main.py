@@ -70,7 +70,12 @@ def unpack_batch(batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch
     if y.ndim == 2:
         y = y.unsqueeze(-1)
 
-    return mean.to(device), variance.to(device), y.to(device)
+    non_blocking = device.type == "cuda"
+    return (
+        mean.to(device, non_blocking=non_blocking),
+        variance.to(device, non_blocking=non_blocking),
+        y.to(device, non_blocking=non_blocking),
+    )
 
 
 def _to_python(value):
@@ -79,60 +84,51 @@ def _to_python(value):
     return value
 
 
-@torch.no_grad()
-def evaluate(model, loader: DataLoader) -> float:
+@torch.inference_mode()
+def _mean_recon(model, loader: DataLoader, *, prior: bool) -> float:
     model.eval()
-    losses = []
-    total = 0.0
+    total = None
     count = 0
     for batch in loader:
         mean, variance, y = unpack_batch(batch)
-        t_recon_loss, _ = model.compute_losses(mean, variance, y)
-        total += float(t_recon_loss)
+        recon, _ = model.compute_losses(mean, variance, y, prior=prior)
+        total = recon if total is None else total + recon
         count += 1
     model.train()
-    return total/count if count > 0 else torch.inf # worst possible loss if no batches were evaluated
+    if count == 0:
+        return torch.inf
+    return float(total / count)
 
 
-@torch.no_grad()
+def evaluate(model, loader: DataLoader) -> float:
+    return _mean_recon(model, loader, prior=True)
+
+
 def evaluate_posterior(model, loader: DataLoader) -> float:
-    model.eval()
-    losses = []
-    total = 0.0
-    count = 0
-    for batch in loader:
-        mean, variance,  y = unpack_batch(batch)
-        t_recon_loss_q, _ = model.compute_losses(
-            mean,
-            variance,
-            y,
-            prior=False,
-        )
-        total += float(t_recon_loss_q)
-        count += 1
-    model.train()
-    return total/count if count > 0 else torch.inf # worst possible loss if no batches were evaluated
+    return _mean_recon(model, loader, prior=False)
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def evaluate_scrabbled(model, loader: DataLoader) -> float:
     model.eval()
-    total = 0.0
+    total = None
     count = 0
     for batch in loader:
-        mean, varianece, y = unpack_batch(batch)
+        mean, variance, y = unpack_batch(batch)
         y_random = y[torch.randperm(y.size(0))]  # Scramble the target values
-        t_recon_loss_q, _ = model.compute_scrambled_losses(
+        recon, _ = model.compute_scrambled_losses(
             mean,
-            varianece,
+            variance,
             y,
             y_random,
             prior=False,
         )
-        total += float(t_recon_loss_q)
+        total = recon if total is None else total + recon
         count += 1
     model.train()
-    return total/count if count > 0 else torch.inf # worst possible loss if no batches were evaluated
+    if count == 0:
+        return torch.inf
+    return float(total / count)
 
 
 @torch.no_grad()
@@ -274,9 +270,11 @@ def train_model(
 
         for batch in train_loader:
             mean, variance, y = unpack_batch(batch)
-            epoch_losses.append(
-                model.train_step(mean, variance, y, middle_optimizer, inner_optimizer)
+            step_loss = model.train_step(
+                mean, variance, y, middle_optimizer, inner_optimizer
             )
+            if runtime.verbose:
+                epoch_losses.append(step_loss)
 
         model.outer_train_step(train_loader)
 
@@ -288,6 +286,8 @@ def train_model(
         if runtime.verbose:
             with torch.no_grad():
                 mean_loss = sum(epoch_losses) / max(1, len(epoch_losses))
+                if torch.is_tensor(mean_loss):
+                    mean_loss = float(mean_loss)
                 #test_loss = evaluate(model, test_loader)
                 test_loss = 0.0
                 val_posterior = evaluate_posterior(model, val_loader)

@@ -67,7 +67,7 @@ class Model(KLBaseModel):
         inner_optimizer,
     ) -> float:
         self.train()
-        inner_optimizer.zero_grad()
+        inner_optimizer.zero_grad(set_to_none=True)
 
         mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
@@ -84,7 +84,7 @@ class Model(KLBaseModel):
         prior_kl.backward()
         inner_optimizer.step()
 
-        middle_optimizer.zero_grad()
+        middle_optimizer.zero_grad(set_to_none=True)
         mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=False
         )
@@ -110,7 +110,7 @@ class Model(KLBaseModel):
         self.lambda_lr = dual_lr
         self.rho_lr = dual_lr
         violation = torch.clamp(residual.detach(), min=0.0)
-        self.rho = max(1e-8, self.rho + self.rho_lr * float(violation.mean().item()))
+        self._update_rho(violation)
         if self.config.set_lambda is None:
             self.lambda_ = torch.clamp(
                 self.lambda_.to(residual.device) + self.lambda_lr * residual.detach(),
@@ -118,7 +118,7 @@ class Model(KLBaseModel):
                 self.lambda_max,
             )
 
-        return float(loss.detach())
+        return loss.detach()
 
     def print_gradients(self, mean: torch.Tensor,variance: torch.Tensor, y: torch.Tensor):
 

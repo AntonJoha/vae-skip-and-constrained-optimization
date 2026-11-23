@@ -45,7 +45,6 @@ class Model(KLBaseModel):
     def _constraint_multiplier(self, residual: torch.Tensor) -> torch.Tensor:
         multiplier = self.lambda_.to(residual.device)
         if self.config.set_lambda is not None:
-            print("HERE")
             multiplier = multiplier.abs() * residual.detach().sign()
         return multiplier
 
@@ -96,9 +95,7 @@ class Model(KLBaseModel):
         self.lambda_lr = dual_lr
         self.rho_lr = dual_lr
         detached_residual = residual.detach()
-        self.rho = max(
-            1e-8, self.rho + self.rho_lr * float(detached_residual.abs().mean().item())
-        )
+        self._update_rho(detached_residual)
         if self.config.set_lambda is None:
             self.lambda_ = torch.clamp(
                 self.lambda_.to(detached_residual.device)
@@ -107,7 +104,7 @@ class Model(KLBaseModel):
                 self.lambda_max,
             )
 
-        return float(loss.detach())
+        return loss.detach()
 
     def print_gradients(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor):
 
