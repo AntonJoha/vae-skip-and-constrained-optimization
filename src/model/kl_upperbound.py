@@ -92,14 +92,14 @@ class Model(KLBaseModel):
         self.lambda_lr = dual_lr
         self.rho_lr = dual_lr
         detached = residual.detach()
-        self.rho = max(1e-8, self.rho + self.rho_lr * float(detached.abs().mean().item()))
+        self._update_rho(detached)
         self.lambda_ = torch.clamp(
             self.lambda_.to(detached.device) + self.lambda_lr * detached,
             self.lambda_min,
             self.lambda_max,
         )
 
-        return float(loss.detach())
+        return loss.detach()
 
     def print_gradients(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor):
         mean_p, logvar_p, prior_list, combined_posterior_list = self.latent_pass(

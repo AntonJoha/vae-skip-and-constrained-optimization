@@ -83,6 +83,49 @@ class SequenceAttentionEncoder(nn.Module):
         return self.norm(h)
 
 
+def _gaussian_kl(prior: torch.Tensor, posterior: torch.Tensor) -> torch.Tensor:
+    p_mean, p_logvar = prior.chunk(2, dim=-1)
+    q_mean, q_logvar = posterior.chunk(2, dim=-1)
+    return 0.5 * (
+        p_logvar
+        - q_logvar
+        + (q_logvar.exp() + (q_mean - p_mean).square()) / p_logvar.exp()
+        - 1
+    )
+
+
+def _batch_gaussian_kl(prior_steps, posterior_steps) -> torch.Tensor | None:
+    """Stack horizon/layer Gaussians and return per-step, per-layer mean KL.
+
+    Returns None when the nested lists are ragged so the caller can fall back
+    to the original loop. The reduction matches summing ``kl.sum(-1).mean()``
+    over each zipped pair.
+    """
+    if not prior_steps or not posterior_steps:
+        return None
+    width = min(len(prior_steps[0]), len(posterior_steps[0]))
+    if width == 0:
+        return None
+    if any(len(step) < width for step in prior_steps) or any(
+        len(step) < width for step in posterior_steps
+    ):
+        return None
+    try:
+        prior = torch.stack(
+            [torch.stack(list(step[:width]), dim=0) for step in prior_steps], dim=0
+        )
+        posterior = torch.stack(
+            [torch.stack(list(step[:width]), dim=0) for step in posterior_steps],
+            dim=0,
+        )
+    except RuntimeError:
+        return None
+    kl = _gaussian_kl(prior, posterior).sum(dim=-1)
+    if kl.ndim < 3:
+        return None
+    return kl.flatten(start_dim=2).mean(dim=-1)
+
+
 def _make_mlp(
     input_dim: int, hidden_dim: int, output_dim: int, dropout: float = 0.0
 ) -> nn.Sequential:
@@ -234,10 +277,9 @@ class KLBaseModel(nn.Module):
         return weights / weights.sum()
 
     def _layerwise_budget_target(self, layered_kl: torch.Tensor) -> torch.Tensor:
-        # I currently want the same target for each layer, but this could be changed to a more complex scheme if desired
-        return (
-            torch.zeros(layered_kl.shape).to(device) + self.kl_target
-        )  # * self._layer_budget_weights(layered_kl)
+        # Same target for each layer. Allocate on the activation device; a CPU
+        # zeros tensor plus .to(device) syncs the GPU every batch.
+        return layered_kl.new_full(layered_kl.shape, self.kl_target)
 
     def _reduce_encoder_output(self, encoded: torch.Tensor) -> torch.Tensor:
         if self.posterior_reduce == "mean":
@@ -256,37 +298,41 @@ class KLBaseModel(nn.Module):
 
     
     def latent_pass(self, mean, variance, y, prior=False, teacher_forcing=False):
-        
-        mean_pred, logvar_pred = [] , []
-        prior_list , combined_posterior_list = [], []
-        for i in range(self.config.horizon):
-
-
-            if y is not None:
-                mean_p, logvar_p, prior_l, combined_posterior = self._latent_pass(mean, variance, y[:,i,:], prior=prior)
-            else:
-                mean_p, logvar_p, prior_l, combined_posterior = self._latent_pass(mean, variance, y=None, prior=prior)
+        mean_pred, logvar_pred = [], []
+        prior_list, combined_posterior_list = [], []
+        horizon = self.config.horizon
+        for i in range(horizon):
+            step_y = None if y is None else y[:, i, :]
+            mean_p, logvar_p, prior_l, combined_posterior = self._latent_pass(
+                mean, variance, step_y, prior=prior
+            )
             mean_pred.append(mean_p)
             logvar_pred.append(logvar_p)
             prior_list.append(prior_l)
             combined_posterior_list.append(combined_posterior)
 
+            if i + 1 == horizon:
+                break
+
             if teacher_forcing:
-                mean_p = y[:,i,:]
+                mean_p = y[:, i, :]
                 variance_p = torch.zeros_like(mean_p)
             else:
-                variance_p = torch.exp(logvar_p)
-
+                variance_p = logvar_p.exp()
 
             if mean_p.ndim == 2:
                 mean_p = mean_p.unsqueeze(1)
             if variance_p.ndim == 2:
                 variance_p = variance_p.unsqueeze(1)
-            mean = torch.cat([mean[:,1:,:], mean_p], dim=1)
-            variance = torch.cat([variance[:,1:,:], variance_p], dim=1)
+            mean = torch.cat([mean[:, 1:, :], mean_p], dim=1)
+            variance = torch.cat([variance[:, 1:, :], variance_p], dim=1)
 
-
-        return torch.stack(mean_pred, dim=1), torch.stack(logvar_pred, dim=1), prior_list, combined_posterior_list
+        return (
+            torch.stack(mean_pred, dim=1),
+            torch.stack(logvar_pred, dim=1),
+            prior_list,
+            combined_posterior_list,
+        )
 
 
 
@@ -296,12 +342,11 @@ class KLBaseModel(nn.Module):
         posterior_list: list[torch.Tensor] = []
         combined_posterior_list: list[torch.Tensor] = []
 
-        if y is not None:
-            
+        if y is not None and not prior:
             mean_var_pair = torch.cat([mean, variance], dim=-1)
             y_pair = torch.cat([y, torch.zeros_like(y)], dim=-1).unsqueeze(1)
 
-            y_full = torch.cat([ mean_var_pair, y_pair], dim=1)
+            y_full = torch.cat([mean_var_pair, y_pair], dim=1)
             posterior = self._encode_state(self.posterior_state, y_full)
             for layer in self.posterior_layers:
                 posterior = layer(posterior)
@@ -312,6 +357,16 @@ class KLBaseModel(nn.Module):
                 posterior = self._reparametrize(q_mean, logvar)
             if self._should_reverse_posterior():
                 posterior_list.reverse()
+        elif y is not None and prior:
+            # Prior forecasts do not use the posterior network. Consume the
+            # same noise it used to sample so prior draws stay unchanged.
+            for _ in self.posterior_layers:
+                torch.randn(
+                    mean.shape[0],
+                    self.config.hidden_dim,
+                    device=mean.device,
+                    dtype=mean.dtype,
+                )
 
         prior_state = self._encode_state(self.prior_state, torch.cat([mean, variance], dim=-1))
         prior_list: list[torch.Tensor] = []
@@ -538,21 +593,39 @@ class KLBaseModel(nn.Module):
         mean, logvar, *_ = self.latent_pass(mean, variance, y=None, prior=True)
         return mean, logvar
 
+    def _update_rho(self, violation: torch.Tensor) -> None:
+        # Keep rho on device. .item() here used to sync the GPU every batch.
+        magnitude = violation.detach().abs().mean()
+        rho = self.rho
+        if not torch.is_tensor(rho):
+            rho = magnitude.new_tensor(float(rho))
+        elif rho.device != magnitude.device or rho.dtype != magnitude.dtype:
+            rho = rho.to(device=magnitude.device, dtype=magnitude.dtype)
+        self.rho = torch.clamp(rho + self.rho_lr * magnitude, min=1e-8)
+
     def _kl_from_stats(
         self, prior_list: list[torch.Tensor], posterior_list: list[torch.Tensor]
     ) -> torch.Tensor:
-        kl_loss = 0.0
-        for p, q in zip(prior_list, posterior_list, strict=False):
-            for prior, posterior in zip(p, q, strict=False):
-                p_mean, p_logvar = prior.chunk(2, dim=-1)
-                q_mean, q_logvar = posterior.chunk(2, dim=-1)
-                kl = 0.5 * (
-                    p_logvar
-                    - q_logvar
-                    + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
-                    - 1
-                )
-                kl_loss += kl.sum(dim=-1).mean()
+        paired = [
+            (p, q)
+            for p, q in zip(prior_list, posterior_list, strict=False)
+            if p and q
+        ]
+        if not paired:
+            return torch.zeros((), device=self.device)
+        per_step = _batch_gaussian_kl([p for p, _ in paired], [q for _, q in paired])
+        if per_step is None:
+            return self._kl_from_stats_loop(paired)
+        return per_step.sum()
+
+    def _kl_from_stats_loop(self, paired) -> torch.Tensor:
+        kl_loss = None
+        for prior_steps, posterior_steps in paired:
+            for prior, posterior in zip(prior_steps, posterior_steps, strict=False):
+                kl = _gaussian_kl(prior, posterior).sum(dim=-1).mean()
+                kl_loss = kl if kl_loss is None else kl_loss + kl
+        if kl_loss is None:
+            return torch.zeros((), device=self.device)
         return kl_loss
 
     def _layered_kl(
@@ -560,22 +633,28 @@ class KLBaseModel(nn.Module):
         prior_list: list[torch.Tensor],
         combined_posterior_list: list[torch.Tensor],
     ) -> torch.Tensor:
-        kl_losses = [torch.tensor(0.0).to(self.device) for _ in range(len(prior_list[0]))]
-        for p, q in zip(prior_list, combined_posterior_list, strict=False):
-            count = 0
-            for prior, posterior in zip(p, q, strict=False):
-                p_mean, p_logvar = prior.chunk(2, dim=-1)
-                q_mean, q_logvar = posterior.chunk(2, dim=-1)
-                kl = 0.5 * (
-                    p_logvar
-                    - q_logvar
-                    + (torch.exp(q_logvar) + (q_mean - p_mean).pow(2)) / torch.exp(p_logvar)
-                    - 1
-                )
-                kl_losses[count] += kl.sum(dim=-1).mean()/len(prior_list)
-                count += 1
-                
-        return torch.stack(kl_losses)
+        n_layers = len(prior_list[0])
+        paired = [
+            (p, q)
+            for p, q in zip(prior_list, combined_posterior_list, strict=False)
+            if p and q
+        ]
+        if not paired:
+            return torch.zeros(n_layers, device=self.device)
+        per_step = _batch_gaussian_kl([p for p, _ in paired], [q for _, q in paired])
+        if per_step is None or per_step.shape[-1] != n_layers:
+            return self._layered_kl_loop(prior_list, paired, n_layers)
+        return per_step.sum(dim=0) / len(prior_list)
+
+    def _layered_kl_loop(self, prior_list, paired, n_layers: int) -> torch.Tensor:
+        kl_losses = torch.zeros(n_layers, device=self.device)
+        scale = len(prior_list)
+        for prior_steps, posterior_steps in paired:
+            for count, (prior, posterior) in enumerate(
+                zip(prior_steps, posterior_steps, strict=False)
+            ):
+                kl_losses[count] += _gaussian_kl(prior, posterior).sum(dim=-1).mean() / scale
+        return kl_losses
 
     def _compute_losses(
         self,
@@ -603,7 +682,7 @@ class KLBaseModel(nn.Module):
         y: torch.Tensor,
         y_random: torch.Tensor,
         prior: bool = False,
-    ) -> tuple[float, float]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         pred_mean, pred_logvar, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y_random, prior=prior
         )
@@ -614,12 +693,12 @@ class KLBaseModel(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        return float(rec), float(kl)
+        return rec, kl
 
     @torch.no_grad()
     def compute_losses(
             self, mean: torch.Tensor, variance:  torch.Tensor, y: torch.Tensor, prior: bool = True
-    ) -> tuple[float, float]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         pred_mean, pred_logvar, prior_list, combined_posterior_list = self.latent_pass(
             mean, variance, y, prior=prior
         )
@@ -630,7 +709,7 @@ class KLBaseModel(nn.Module):
             prior_list=prior_list,
             combined_posterior_list=combined_posterior_list,
         )
-        return float(rec), float(kl)
+        return rec, kl
 
     @torch.no_grad()
     def get_layered_kl(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor) -> torch.Tensor:

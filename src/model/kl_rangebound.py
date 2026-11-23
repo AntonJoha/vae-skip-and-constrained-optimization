@@ -120,9 +120,9 @@ class Model(KLBaseModel):
         )
         violation = torch.max(
             torch.clamp(res_lower, min=0.0), torch.clamp(res_upper, min=0.0))
-        self.rho = max(1e-8, self.rho + self.rho_lr * float(violation.mean().item()))
+        self._update_rho(violation)
 
-        return float(loss.detach())
+        return loss.detach()
 
     def inner_parameters(self):
         return None

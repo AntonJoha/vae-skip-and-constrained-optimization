@@ -192,7 +192,7 @@ class StandardizedPedDataset(Dataset):
             - self.mean
         ) / self.std
 
-        return (x, torch.zeros_like(x)), y
+        return x, y
 
 
 # Backward-compatible alias for older imports.
@@ -223,7 +223,7 @@ class TimeSeriesDataset(Dataset):
             - self.mean
         ) / self.std
 
-        return (x, torch.zeros_like(x)), y
+        return x, y
 
 
 def _split_train_val_test(
@@ -388,10 +388,39 @@ class WindowedSeriesDataset(Dataset):
     def __len__(self) -> int:
         return max(0, len(self.series) - self.seq_len - self.horizon + 1)
 
-    def __getitem__(self, index: int) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         sequence = self.series[index : index + self.seq_len]
         target = self.series[index + self.seq_len : index + self.seq_len + self.horizon]
-        return (sequence, torch.zeros_like(sequence)), target # returns, [mean, variance (always 0)], target.
+        return sequence, target
+
+
+def collate_series_batch(batch):
+    """Collate windows and attach one zero-variance tensor per batch.
+
+    Variance is always zero. Building it per sample allocated and copied a
+    full window for every index.
+    """
+    features = []
+    targets = []
+    for item in batch:
+        x, y = item
+        if isinstance(x, tuple):
+            x = x[0]
+        features.append(x)
+        targets.append(y)
+    mean = torch.stack(features)
+    return (mean, torch.zeros_like(mean)), torch.stack(targets)
+
+
+def make_loader(dataset, batch_size, shuffle, drop_last=False):
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        drop_last=drop_last,
+        pin_memory=torch.cuda.is_available(),
+        collate_fn=collate_series_batch,
+    )
 
 
 def load_series(path: Path) -> torch.Tensor:
@@ -441,24 +470,9 @@ def get_shampoo_dataloaders(
             generator=generator,
         )
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=config.batch_size,
-        shuffle=True,
-        drop_last=False,
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        drop_last=False,
-    )
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        drop_last=False,
-    )
+    train_loader = make_loader(train_dataset, config.batch_size, shuffle=True)
+    val_loader = make_loader(val_dataset, config.batch_size, shuffle=False)
+    test_loader = make_loader(test_dataset, config.batch_size, shuffle=False)
 
     return train_loader, val_loader, test_loader
 
@@ -564,9 +578,9 @@ def get_ped_dataset(
             generator=generator,
         )
 
-    test = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    train = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test = make_loader(test_dataset, batch_size, shuffle=False)
+    train = make_loader(train_dataset, batch_size, shuffle=True)
+    val = make_loader(val_dataset, batch_size, shuffle=False)
 
     return train, val, test
 
@@ -633,9 +647,9 @@ def _make_dataloaders(config) -> tuple[DataLoader, DataLoader, DataLoader]:
             config.seed,
         )
 
-    train_df = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-    val_df = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
-    test_df = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
+    train_df = make_loader(train_dataset, config.batch_size, shuffle=True)
+    val_df = make_loader(val_dataset, config.batch_size, shuffle=False)
+    test_df = make_loader(test_dataset, config.batch_size, shuffle=True)
 
     logger.info(f"train dataset size: {len(train_dataset)}")
     logger.info(f"val dataset size: {len(val_dataset)}")
