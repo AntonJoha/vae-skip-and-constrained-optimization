@@ -289,6 +289,9 @@ def get_csv_dataset(
         df.drop(["date"], inplace=True, axis=1)
     if path.name == "ETTh2.csv":
         df.drop(["date"], inplace=True, axis=1)
+    if path.name == "ETTm1.csv":
+        df.drop(["date"], inplace=True, axis=1)
+
 
 
     # Chronological split: train, then validation, then test. The scaler is
@@ -712,6 +715,10 @@ def get_scale_constant(runtime):
             df.drop(["date"], inplace=True, axis=1)
         if dataset_path.name == "ETTh2.csv":
             df.drop(["date"], inplace=True, axis=1)
+        if dataset_path.name == "ETTm1.csv":
+            df.drop(["date"], inplace=True, axis=1)
+
+
 
 
         scaler = StandardScaler()
@@ -729,7 +736,7 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
-        "data/ETTh2.csv",
+        "data/ETTm1.csv",
         "data/AirQualityUCI.csv",
         "data/nn5_daily_dataset_without_missing_values.tsf",
         "data/AirQualityUCI.csv",
