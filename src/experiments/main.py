@@ -357,15 +357,7 @@ def train_model(
                 model.print_gradients(mean_t, variance_t, y_t)
 
 
-            """
-            gsw_val_loss = evaluate_generalized_wasserstein(model, val_loader)
-            gsw_train_loss = evaluate_generalized_wasserstein(model, train_loader)
-            log.info(
-                " Generalized Wasserstein on train: %.5f, Generalized Wasserstein on val: %.5f",
-                gsw_train_loss,
-                gsw_val_loss,
-            )
-            """
+           
 
 
         if reason := should_stop_training(before, val_loss):

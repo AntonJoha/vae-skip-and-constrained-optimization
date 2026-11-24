@@ -1,9 +1,9 @@
 import logging
-
+import math
 import numpy as np
 import torch
 from torch import nn
-
+import random
 from experiments.util import SeriesConfig
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -392,15 +392,9 @@ class KLBaseModel(nn.Module):
                 torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
             )/num_projections
             if wass > 100:
-                print("Projection: ", projection)
-                
-                print("Prior: ", prior_samples)
-                print("Posterior: ", posterior_samples)
                 prior_proj = [torch.matmul(sample, projection) for sample in prior_samples]
                 posterior_proj = [torch.matmul(sample, projection) for sample in posterior_samples]
 
-                print("Prior proj", prior_proj)
-                print("Posterior proj", posterior_proj)
 
                 prior_proj_sorted = [torch.sort(proj)[0] for proj in prior_proj]
                 posterior_proj_sorted = [torch.sort(proj)[0] for proj in posterior_proj]
@@ -408,7 +402,6 @@ class KLBaseModel(nn.Module):
                 wass = sum(
                     torch.mean((p - q) ** 2) for p, q in zip(prior_proj_sorted, posterior_proj_sorted, strict=False)
                 )/num_projections
-                print("Wasser", wass)
                 exit()
 
             wasserstein_loss += wass
@@ -489,7 +482,6 @@ class KLBaseModel(nn.Module):
         mean_var_pair = torch.cat([mean, variance], dim=-1)
         y_pair = torch.cat([y, torch.zeros_like(y)], dim=-1).unsqueeze(1)
 
-        
         y_full = torch.cat([ mean_var_pair, y_pair], dim=1)
         posterior = self._encode_state(self.posterior_state, y_full)
 
@@ -533,6 +525,62 @@ class KLBaseModel(nn.Module):
         return prior_list, combined_posterior_list
 
 
+    def get_latent_distribution(
+            self, mean: torch.Tensor, variance: torch.Tensor,  y: torch.Tensor
+    ):
+        
+        old = self.logvar_clamp
+        self.logvar_clamp = (-10,2)
+        posterior_list: list[torch.Tensor] = []
+        combined_posterior_list: list[torch.Tensor] = []
+
+        mean_var_pair = torch.cat([mean, variance], dim=-1)
+        y_pair = torch.cat([y, torch.zeros_like(y)], dim=-1).unsqueeze(1)
+
+        y_full = torch.cat([ mean_var_pair, y_pair], dim=1)
+        posterior = self._encode_state(self.posterior_state, y_full)
+
+        if self.posterior_layers is None or len(self.posterior_layers) == 0:
+            raise ValueError("Posterior layers are not defined or empty.")
+
+        for layer in self.posterior_layers:
+            posterior = layer(posterior)
+            posterior_list.append(posterior)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(q_logvar)
+            posterior = self._reparametrize(q_mean, q_logvar)
+        if self._should_reverse_posterior():
+            posterior_list.reverse()
+
+        prior_state = self._encode_state(self.prior_state, torch.cat([mean, variance], dim=-1))
+        prior_list: list[torch.Tensor] = []
+        for i, layer in enumerate(self.prior_layers):
+            old_state = prior_state
+            prior_state = layer(prior_state)
+            p_mean, p_logvar = prior_state.chunk(2, dim=-1)
+            logvar = self._clamp_logvar(p_logvar)
+            prior_list.append(torch.cat([p_mean, p_logvar], dim=-1))
+
+            posterior = posterior_list[i]
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+            p_mean, p_logvar = prior_state.chunk(2, dim=-1)
+            q_logvar = self._clamp_logvar(q_logvar)
+            p_logvar = self._clamp_logvar(p_logvar)
+            c_mean, c_logvar = self._combine_gaussians(
+                q_mean, q_logvar, p_mean, p_logvar
+            )
+            logvar = self._clamp_logvar(logvar)
+            prior_state = self._reparametrize(c_mean, c_logvar)
+            combined_posterior_list.append(torch.cat([c_mean, c_logvar], dim=-1))
+
+            if self.skip_connection:
+                prior_state = prior_state + self.skip_weights[i] * old_state
+        
+        self.logvar_clamp = old
+        return prior_list, combined_posterior_list
+
+    
+    
 
     def forward(self, mean: torch.Tensor, variance: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         mean, logvar, *_ = self.latent_pass(mean, variance, y=None, prior=True)
@@ -636,6 +684,175 @@ class KLBaseModel(nn.Module):
     def get_layered_kl(self, mean: torch.Tensor, variance: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         _, _, prior_list, combined_posterior_list = self.latent_pass(mean, variance, y, prior=False)
         return self._layered_kl(prior_list, combined_posterior_list).detach()
+
+    @torch.no_grad()
+    def get_first_step_layered_kl(
+        self,
+        mean: torch.Tensor,
+        variance: torch.Tensor,
+        y: torch.Tensor,
+        ) -> torch.Tensor:
+        """
+        Per-layer KL for the first forecast step only.
+
+        Returns:
+            Tensor of shape [num_layers].
+        """
+        _, _, prior_list, posterior_list = self._latent_pass(
+            mean=mean,
+            variance=variance,
+            y=y[:, 0, :],
+            prior=False,
+        )
+
+        kl_per_layer = []
+
+        for prior, posterior in zip(
+            prior_list,
+            posterior_list,
+            strict=True,
+        ):
+            p_mean, p_logvar = prior.chunk(2, dim=-1)
+            q_mean, q_logvar = posterior.chunk(2, dim=-1)
+
+            p_logvar = self._clamp_logvar(p_logvar)
+            q_logvar = self._clamp_logvar(q_logvar)
+
+            kl = 0.5 * (
+                p_logvar
+                - q_logvar
+                + (
+                    torch.exp(q_logvar)
+                    + (q_mean - p_mean).pow(2)
+                ) / torch.exp(p_logvar)
+                - 1.0
+            )
+
+            # Sum latent dimensions, average batch examples.
+            kl_per_layer.append(
+                kl.sum(dim=-1).mean()
+            )
+
+        return torch.stack(kl_per_layer)
+
+    @torch.no_grad()
+    def get_y_samples(self, mean, variance, y, num_samples=10):
+        samples = []
+        for _ in range(num_samples):
+            mean_pred, logvar_pred, _, _ = self.latent_pass(mean, variance, y, prior=False)
+            samples.append(mean_pred)
+        return samples
+
+
+
+
+
+    @torch.no_grad()
+    def get_mutual_info(
+        self,
+        mean,
+        variance,
+        y,
+        num_futures=10,
+        num_z_samples=1000,
+    ):
+
+        future_samples = self.get_y_samples(
+            mean,
+            variance,
+            y,
+            num_samples=num_futures,
+        )
+        _, posterior= self.get_latent_distribution(mean, variance, y[:, 0, :])
+
+        gaussian_mixture = []
+
+        total_prob = 0
+
+        for s in future_samples:
+            s = s.squeeze(-2) if s.ndim > 3 else s
+
+            _, pos = self.get_latent_distribution(
+                mean,
+                variance,
+                s[:, 0, :],
+            )
+            gaussian_mixture.append(pos)
+        
+
+        for i, p in enumerate(posterior):
+            mean_p, logvar_p = p.chunk(2, dim=-1)
+
+            sum_prob = 0
+            for _ in range(num_z_samples):
+                z = self._reparametrize(mean_p, logvar_p)
+                all_log_probs = []
+                for mix in gaussian_mixture:
+                    mean, logvar = mix[i].chunk(2, dim=-1)
+                    log_prob = (-0.5 * ((z - mean) ** 2) / torch.exp(logvar) - 0.5 * torch.log(2 * math.pi * torch.exp(logvar))).sum(dim=-1)
+                    all_log_probs.append(log_prob)
+
+                log_q_mix = torch.logsumexp(torch.stack(all_log_probs, dim=0), dim=0) - math.log(len(gaussian_mixture))
+                log_q_z = (-0.5 * ((z - mean_p) ** 2) / torch.exp(logvar_p) - 0.5 * torch.log(2 * math.pi * torch.exp(logvar_p))).sum(dim=-1)
+                sum_prob += (log_q_z - log_q_mix).mean().item()
+            sum_prob /= num_z_samples
+            total_prob += sum_prob
+        total_prob /= len(posterior)
+        return total_prob
+
+
+
+    @torch.no_grad()
+    def get_density_missmatch(self, mean, variance, y, num_futures=10, num_z_samples=1000):
+        # todo, compute the density mismatch between the prior and posterior distributions
+
+
+        future_samples = self.get_y_samples(
+            mean,
+            variance,
+            y,
+            num_samples=num_futures,
+        )
+        prior, _ = self.get_latent_distribution(mean, variance, y[:, 0, :])
+
+        gaussian_mixture = []
+
+        total_prob = 0
+
+        for s in future_samples:
+            s = s.squeeze(-2) if s.ndim > 3 else s
+
+            _, pos = self.get_latent_distribution(
+                mean,
+                variance,
+                s[:, 0, :],
+            )
+            gaussian_mixture.append(pos)
+        
+
+
+        for i, p in enumerate(prior):
+            mean_p, logvar_p = p.chunk(2, dim=-1)
+
+            sum_prob = 0
+            for _ in range(num_z_samples):
+                pos = random.choice(gaussian_mixture)
+                g_mean, g_logvar = pos[i].chunk(2, dim=-1)
+                z = self._reparametrize(g_mean, g_logvar)
+                all_log_probs = []
+                for mix in gaussian_mixture:
+                    mean, logvar = mix[i].chunk(2, dim=-1)
+                    log_prob = (-0.5 * ((z - mean) ** 2) / torch.exp(logvar) - 0.5 * torch.log(2 * math.pi * torch.exp(logvar))).sum(dim=-1)
+                    all_log_probs.append(log_prob)
+                log_q_mix = torch.logsumexp(torch.stack(all_log_probs, dim=0), dim=0) - math.log(len(gaussian_mixture))
+                log_q_z = (-0.5 * ((z - mean_p) ** 2) / torch.exp(logvar_p) - 0.5 * torch.log(2 * math.pi * torch.exp(logvar_p))).sum(dim=-1)
+                sum_prob += (log_q_mix - log_q_z).mean().item()
+            sum_prob /= num_z_samples
+            total_prob += sum_prob
+        total_prob /= len(prior)
+        return total_prob
+
+
 
     @torch.no_grad()
     def get_mean_logvar_diff(
