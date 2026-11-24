@@ -753,8 +753,8 @@ class KLBaseModel(nn.Module):
         mean,
         variance,
         y,
-        num_futures=100,
-        num_z_samples=64,
+        num_futures=10,
+        num_z_samples=1000,
     ):
 
         future_samples = self.get_y_samples(
@@ -803,7 +803,7 @@ class KLBaseModel(nn.Module):
 
 
     @torch.no_grad()
-    def get_density_missmatch(self, mean, variance, y, num_futures=100, num_z_samples=64):
+    def get_density_missmatch(self, mean, variance, y, num_futures=10, num_z_samples=1000):
         # todo, compute the density mismatch between the prior and posterior distributions
 
 

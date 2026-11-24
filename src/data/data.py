@@ -736,8 +736,9 @@ def get_scale_constant(runtime):
 
 def get_dataset_names():
     return [
+
+        "data/ETTh1.csv",
         "data/cleaned_weather.csv",
-        "data/ETTm1.csv",
         "data/AirQualityUCI.csv",
         "data/nn5_daily_dataset_without_missing_values.tsf",
         "data/AirQualityUCI.csv",

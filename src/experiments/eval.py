@@ -272,7 +272,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
             means.append(mean_p.detach().cpu())
             logvars.append(logvar.detach().cpu())
             ys.append(y.detach().cpu())
-            if layered_kl_counter > 10:
+            if layered_kl_counter > 50:
                 break
 
         
