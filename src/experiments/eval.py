@@ -272,9 +272,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
             means.append(mean_p.detach().cpu())
             logvars.append(logvar.detach().cpu())
             ys.append(y.detach().cpu())
-            if layered_kl_counter > 50:
-                break
-
+        
         
         if layered_kl_counter > 0 and layered_kl is not None and mutual_info is not None and density_missmatch is not None:
             layered_kl /= layered_kl_counter
@@ -308,6 +306,9 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
 
 
     return {
+        "mutual_info": mutual_info,
+        "density_missmatch": density_missmatch,
+        "layered_first_step": layered_first_step,
         "x": xs,
         "mean": means,
         "logvar": logvars,
@@ -370,7 +371,7 @@ def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
 
 def benchmark_model(args, model_path: Path) -> None:
 
-    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 10)
+    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 30)
     runtime.reduced_dataset = 1
 
     print(runtime)
