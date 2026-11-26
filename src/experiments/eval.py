@@ -59,13 +59,14 @@ def parse_args() -> argparse.Namespace:
 def nll_position(
     mean: torch.Tensor, y: torch.Tensor, logvar: torch.Tensor
 ) -> torch.Tensor:
-
+    
     if mean.ndim == 2:
         mean = mean.unsqueeze(-1)
     if logvar.ndim == 2:
         logvar = logvar.unsqueeze(-1)
     if y.ndim == 2:
         y = y.unsqueeze(-1)
+
     m = mean
     v = logvar.exp()
     
@@ -73,8 +74,8 @@ def nll_position(
 
     if loss.ndim == 1:
         return loss
-    return loss.mean(dim(0,2))
-
+    modified = loss.mean(dim=(0,2))
+    return modified
 
 def fde_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     if mean.ndim == 2:
@@ -156,7 +157,8 @@ def evaluate_baseline(model: nn.Module, loader: DataLoader, scaler):
         logvars_scaled.append(logvar_scaled)
 
         losses.append(float(model.loss(mean, y.squeeze(-1), logvar.exp())))
-        losses_position.append(nll_position(mean, y.squeeze(-1), logvar))
+        p = nll_position(mean, y.squeeze(-1), logvar)
+        losses_position.append(p)
 
         mse_losses.append(float(mse_loss(mean, y.squeeze(-1)).mean()))
         mse_losses_position.append(mse_position(mean, y.squeeze(-1)))
@@ -244,12 +246,14 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
             logvar = logvar.squeeze()
             y = y.squeeze()
             
+            """
             if post_mean.ndim == 2:
                 post_mean = post_mean.unsqueeze(0)
                 post_logvar = post_logvar.unsqueeze(0)
                 mean_p = mean_p.unsqueeze(0)
                 logvar = logvar.unsqueeze(0)
                 y = y.unsqueeze(0)
+            """
 
             post_means.append(post_mean.detach().cpu())
             post_logvars.append(post_logvar.detach().cpu())
@@ -267,6 +271,7 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
 
 
             losses.append(float(model.nllLoss(mean_p, y, logvar.exp())))
+            p = nll_position(mean_p, y, logvar)
             losses_position.append(nll_position(mean_p, y, logvar).detach().cpu())
 
             mse_losses.append(float(mse_loss(mean_p, y).mean()))
@@ -427,7 +432,7 @@ def save_results(output_dir: Path, checkpoint_path: Path, results: dict) -> None
 
 def main() -> None:
     args = parse_args()
-    args.batch_size = 1
+    args.batch_size = 64
     configure_logging(args.verbose)
     res = benchmark_model(args, args.checkpoint_path)
     save_results(args.output_dir, args.checkpoint_path, res)
