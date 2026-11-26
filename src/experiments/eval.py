@@ -68,9 +68,12 @@ def nll_position(
         y = y.unsqueeze(-1)
     m = mean
     v = logvar.exp()
+    
+    loss = nll_loss(m,y,v)
 
-    loss = nll_loss(m, y, v).mean(dim=(0, 2))
-    return loss
+    if loss.ndim == 1:
+        return loss
+    return loss.mean(dim(0,2))
 
 
 def fde_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -98,8 +101,10 @@ def mse_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     if y.ndim == 2:
         y = y.unsqueeze(-1)
     m = mean
-    loss = mse_loss(m, y).mean(dim=(0, 2))
-    return loss
+    loss = mse_loss(m, y)
+    if loss.ndim == 1:
+        return loss
+    return loss.mean(dim=(0, 2))
 
 
 def evaluate_scrambled(model: nn.Module, loader: DataLoader):
