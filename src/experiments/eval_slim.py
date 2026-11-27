@@ -250,9 +250,9 @@ def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
     
     losses_position = np.array(losses_position)
     mse_losses_position = np.array(mse_losses_position)
-    means_array = np.array([m.numpy() for m in means])
-    ys_array = np.array([y.numpy() for y in ys])
-    var_array = np.exp(np.array([v.numpy() for v in logvars]))
+    means_array = np.concatenate([m.numpy() for m in means])
+    ys_array = np.concatenate([y.numpy() for y in ys])
+    var_array = np.exp(np.concatenate([v.numpy() for v in logvars]))
     posterior_losses_position = np.array(posterior_losses_position)
     
     ratio = (means_array - ys_array)**2 / (var_array + 1e-8)
