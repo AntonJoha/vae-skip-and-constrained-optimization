@@ -481,7 +481,7 @@ def tune_hyperparameters(base_runtime: SeriesConfig) -> SeriesConfig:
         if runtime.cyclical_kl:
             runtime = replace(
                 runtime,
-                kl_cycle_epochs=trial.suggest_int("kl_cycle_epochs", 2, 50),
+                kl_cycle_epochs=trial.suggest_int("kl_cycle_epochs", 2, 15),
                 kl_cycle_ratio=trial.suggest_float("kl_cycle_ratio", 0.1, 0.9),
             )
         runtime = replace(runtime, lr_lambda=runtime.learning_rate/10)
@@ -545,7 +545,7 @@ def parse_args() -> argparse.Namespace:
         help="Run baseline training instead of our model.",
     )
     parser.add_argument(
-        "--epochs", type=int, default=500, help="Number of training epochs."
+        "--epochs", type=int, default=200, help="Number of training epochs."
     )
     parser.add_argument("--horizon", type=int, default=10, help="Forecast horizon.")
     parser.add_argument(
