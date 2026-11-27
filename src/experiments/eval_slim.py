@@ -1,0 +1,398 @@
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import random
+from dataclasses import replace
+from pathlib import Path
+
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+
+from data.data import get_scale_constant, make_dataloaders
+from experiments.baseline import Baseline
+from experiments.main import unpack_batch
+from experiments.util import SeriesConfig, configure_logging, load_checkpoint
+from model import (
+    Lower_Model,
+    RangeBound_Model,
+    Reg_Model,
+    Upper_Model,
+    VAE_Baseline_Model,
+)
+import numpy as np
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+logger = logging.getLogger(__name__)
+
+nll_loss = nn.GaussianNLLLoss(reduction="none")
+mse_loss = nn.MSELoss(reduction="none")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Evaluate a saved tDLGM checkpoint on the validation split."
+    )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=Path,
+        default=Path("artifacts/tdlgm/checkpoint_epochfinal_20260807-105536.pt"),
+        help="Path to a saved checkpoint",
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=1, help="Batch size for evaluation"
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose logging output"
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=Path,
+        default=Path("artifacts/eval"),
+        help="Directory to save evaluation results",
+    )
+    return parser.parse_args()
+
+
+def nll_position(
+    mean: torch.Tensor, y: torch.Tensor, logvar: torch.Tensor
+) -> torch.Tensor:
+    
+    if mean.ndim == 2:
+        mean = mean.unsqueeze(-1)
+    if logvar.ndim == 2:
+        logvar = logvar.unsqueeze(-1)
+    if y.ndim == 2:
+        y = y.unsqueeze(-1)
+
+    m = mean
+    v = logvar.exp()
+    
+    loss = nll_loss(m,y,v)
+
+    if loss.ndim == 1:
+        return loss
+    modified = loss.mean(dim=(0,2))
+    return modified
+
+def fde_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    if mean.ndim == 2:
+        mean = mean.unsqueeze(-1)
+    if y.ndim == 2:
+        y = y.unsqueeze(-1)
+    loss = torch.linalg.vector_norm(mean[:, -1, :] - y[:, -1, :], dim=-1).mean()
+    return loss
+
+
+def ade_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    if mean.ndim == 2:
+        mean = mean.unsqueeze(-1)
+    if y.ndim == 2:
+        y = y.unsqueeze(-1)
+    loss = torch.linalg.vector_norm(mean - y, dim=-1).mean()
+
+    return loss
+
+
+def mse_position(mean: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    if mean.ndim == 2:
+        mean = mean.unsqueeze(-1)
+    if y.ndim == 2:
+        y = y.unsqueeze(-1)
+    m = mean
+    loss = mse_loss(m, y)
+    if loss.ndim == 1:
+        return loss
+    return loss.mean(dim=(0, 2))
+
+
+def evaluate_scrambled(model: nn.Module, loader: DataLoader):
+    model.eval()
+    losses = []
+    for batch in loader:
+        mean, variance, y = unpack_batch(batch)
+        y_random = y[torch.randperm(y.size(0))]  # Scramble the target values
+        t_recon_loss_q, _ = model.compute_scrambled_losses(
+            mean,
+                variance,
+            y,
+            y_random,
+            prior=False,
+        )
+        losses.append(t_recon_loss_q)
+    model.train()
+    return sum(losses) / max(1, len(losses))
+
+
+def evaluate_tdlgm(model: nn.Module, loader: DataLoader, scaler):
+    logger.info("Evaluating tDLGM model...")
+
+    model.eval()
+    losses = []
+
+    mse_losses = []
+    mse_losses_position = []
+    losses_position = []
+    posterior_losses_position = []
+
+    xs, means, logvars, ys = [], [], [], []
+    post_means, post_logvars, post_losses, post_mse_losses = [], [], [], []
+    prior_latents, posterior_latents = [], []
+    layered_kl = None
+    mutual_info = None
+    density_missmatch = None
+    layered_kl_counter = 0
+
+    with torch.no_grad():
+        for batch in loader:
+            mean, variance, y = unpack_batch(batch)
+
+            mean_p, logvar, *_ = model(mean, variance)
+
+            _, _, prior_list, _ = model.latent_pass(mean, variance, y=None, prior=True)
+            prior_latents.append(_split_layers(prior_list))
+
+            post_mean, post_logvar, post_prior_list, post_list = model.latent_pass(
+                mean, variance, y, prior=False
+            )
+
+            if random.random() < 0.1 or layered_kl is None:
+                layered_kl_counter += 1
+                if layered_kl is None:
+                    layered_kl = model.get_first_step_layered_kl(mean, variance, y)
+                    density_missmatch = model.get_density_missmatch(mean, variance, y)
+                    mutual_info = model.get_mutual_info(mean, variance, y)
+                else:
+                    layered_kl += model.get_first_step_layered_kl(mean, variance, y)
+                    mutual_info += model.get_mutual_info(mean, variance, y)
+                    density_missmatch += model.get_density_missmatch(mean, variance, y)
+
+
+            # get the right dimentions to everything
+            post_mean = post_mean.squeeze()
+            post_logvar = post_logvar.squeeze()
+            posterior_losses_position.append(nll_position(post_mean, y, post_logvar).detach().cpu())
+
+            mean_p = mean_p.squeeze()
+            logvar = logvar.squeeze()
+            y = y.squeeze()
+            
+            """
+            if post_mean.ndim == 2:
+                post_mean = post_mean.unsqueeze(0)
+                post_logvar = post_logvar.unsqueeze(0)
+                mean_p = mean_p.unsqueeze(0)
+                logvar = logvar.unsqueeze(0)
+                y = y.unsqueeze(0)
+            """
+
+            post_means.append(post_mean.detach().cpu())
+            post_logvars.append(post_logvar.detach().cpu())
+            post_losses.append(
+                float(model.nllLoss(post_mean, y, post_logvar.exp()))
+            )
+            post_mse_losses.append(float(mse_loss(post_mean, y).mean()))
+            posterior_latents.append(
+                {
+                    "prior": _split_layers(post_prior_list),
+                    "posterior": _split_layers(post_list),
+                }
+            )
+
+
+
+            losses.append(float(model.nllLoss(mean_p, y, logvar.exp())))
+            losses_position.append(nll_position(mean_p, y, logvar).detach().cpu())
+
+            mse_losses.append(float(mse_loss(mean_p, y).mean()))
+            mse_losses_position.append(mse_position(mean_p, y).detach().cpu())
+
+
+            xs.append(mean.detach().cpu())
+            means.append(mean_p.detach().cpu())
+            logvars.append(logvar.detach().cpu())
+            ys.append(y.detach().cpu())
+        
+        
+        if layered_kl_counter > 0 and layered_kl is not None and mutual_info is not None and density_missmatch is not None:
+            layered_kl /= layered_kl_counter
+            layered_first_step = layered_kl.mean().item()
+            mutual_info /= layered_kl_counter
+            density_missmatch /= layered_kl_counter
+        
+            print("Layered KL: ", layered_first_step)
+            print("Mutual Info: ", mutual_info)
+            print("Density Missmatch: ", density_missmatch)
+            decomposition = mutual_info + density_missmatch
+            residual = layered_first_step - decomposition
+            relative_error = abs(residual) / max(abs(layered_first_step), 1e-12)
+            closure_ratio = decomposition / max(abs(layered_first_step), 1e-12)
+            print("Layered KL:", layered_first_step)
+            print("Mutual Info:", mutual_info)
+            print("Density Mismatch:", density_missmatch)
+            print("MI + mismatch:", decomposition)
+            print("Residual:", residual)
+            print("Relative error:", relative_error)
+            print("Closure ratio:", closure_ratio)
+
+        scrambled_loss = evaluate_scrambled(model, loader)
+        layered_kl /= len(loader)
+        try:
+            layer_target = model._layer_target(layered_kl)
+            layer_residual = layered_kl - layer_target
+        except:
+            layer_target = None
+            layer_residual = None
+
+    
+    losses_position = np.array(losses_position)
+    mse_losses_position = np.array(mse_losses_position)
+    means_array = np.array([m.numpy() for m in means])
+    ys_array = np.array([y.numpy() for y in ys])
+    var_array = np.exp(np.array([v.numpy() for v in logvars]))
+    posterior_losses_position = np.array(posterior_losses_position)
+    
+    ratio = (means_array - ys_array)**2 / (var_array + 1e-8)
+    print("Means shape: ", means_array.shape)
+    print("Losses position shape: ", losses_position.shape)
+    print("Ratio: ", ratio.shape)
+    print("Losses position posterior shape: ", posterior_losses_position.shape)
+    
+    means_array = means_array.mean(axis=-1).mean(axis=0).mean(axis=0).tolist()
+    losses_position = losses_position.mean(axis=0).tolist()
+    ratio = ratio.mean(axis=-1).mean(axis=0).mean(axis=0).tolist()
+    mse_losses_position = mse_losses_position.mean(axis=0).tolist()
+    posterior_losses_position = posterior_losses_position.mean(axis=0).tolist()
+
+   
+
+    return {
+        "ratio": ratio,
+        "mutual_info": mutual_info,
+        "density_missmatch": density_missmatch,
+        "layered_first_step": layered_first_step,
+        "posterior_losses_position": posterior_losses_position,
+        #"x": xs,
+        #"mean": means,
+        #"logvar": logvars,
+        #"y": ys,
+        #"mean_posterior": post_means,
+        #"logvar_posterior": post_logvars,
+        "loss_posterior": sum(post_losses) / max(1, len(post_losses)),
+        "mse_loss_posterior": sum(post_mse_losses) / max(1, len(post_mse_losses)),
+        #"latents_prior_pass": prior_latents,
+        #"latents_posterior_pass": posterior_latents,
+        "layered_kl": layered_kl,
+        "layer_target": layer_target,
+        "layer_residual": layer_residual,
+        "lambda": getattr(model, "lambda_", None),
+        "lambda_lower": getattr(model, "lambda_lower", None),
+        "lambda_upper": getattr(model, "lambda_upper", None),
+        "layer_budget_weights": model._layer_budget_weights(layered_kl),
+        "losses": losses,
+        "losses_position": losses_position,
+        "loss": sum(losses) / max(1, len(losses)),
+        "loss_position": sum(losses_position) / max(1, len(losses_position)),
+        "mse_loss": sum(mse_losses) / max(1, len(mse_losses)),
+        "mse_losses": mse_losses,
+        "mse_losses_position": mse_losses_position,
+        "mse_loss_position": sum(mse_losses_position)
+        / max(1, len(mse_losses_position)),
+        "scrambled_loss": scrambled_loss,
+    }
+
+
+def _split_layers(layers: list) -> list:
+    out = []
+    for l in layers:
+        for layer in l:
+            mean, logvar = layer.chunk(2, dim=-1)
+            out.append({"mean": mean.detach().cpu(), "logvar": logvar.detach().cpu()})
+    return out
+
+
+def remove_pytorch(results: dict) -> dict:
+    def remove_tensors(obj):
+        if isinstance(obj, torch.Tensor):
+            return obj.detach().cpu().numpy().tolist()
+        elif isinstance(obj, dict):
+            return {k: remove_tensors(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [remove_tensors(v) for v in obj]
+        else:
+            return obj
+
+    return remove_tensors(results)
+
+
+def _set_input_output_dim(runtime: SeriesConfig, loader: DataLoader) -> None:
+    for x, y in loader:
+        runtime.input_dim = x[0].shape[-1]
+        runtime.output_dim = y.shape[-1]
+        break
+
+
+def benchmark_model(args, model_path: Path) -> None:
+
+    runtime, model_config, model_state, _model_class = load_checkpoint(model_path, 30)
+    runtime.reduced_dataset = 1
+
+    print(runtime)
+    runtime = replace(runtime, output_dim=runtime.horizon)
+    runtime = replace(runtime, batch_size=args.batch_size)
+
+    _, _, test_loader = make_dataloaders(runtime)
+    scaler = get_scale_constant(runtime)
+    _set_input_output_dim(runtime, test_loader)
+
+    res = None
+    if runtime.model_name == "tdlgm":
+        if runtime.upper:
+            model = Upper_Model(model_config).to(device)
+        elif runtime.vae_baseline:
+            model = VAE_Baseline_Model(model_config).to(device)
+        elif runtime.lower:
+            model = Lower_Model(model_config).to(device)
+        elif runtime.range_bound:
+            model = RangeBound_Model(model_config).to(device)
+        else:
+            model = Reg_Model(model_config).to(device)
+
+        model.load_state_dict(model_state)
+        res = evaluate_tdlgm(model, test_loader, scaler)
+    elif runtime.model_name == "baseline":
+        model = Baseline(runtime).to(device)
+        model.load_state_dict(model_state)
+        res = evaluate_baseline(model, test_loader, scaler)
+
+    print(
+        f"Model: {runtime.model_name}, Checkpoint: {model_path}, Test Loss: {res['loss']:.5f}, NLL Position Loss: {res['loss_position']}, Test MSE Loss: {res['mse_loss']:.5f} MSE Position Loss: {res['mse_loss_position']}"
+    )
+    print("Scrambled Loss: ", res["scrambled_loss"])
+
+    return remove_pytorch(res)
+
+
+def save_results(output_dir: Path, checkpoint_path: Path, results: dict) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"eval_results_{checkpoint_path.stem}_slim.pt"
+    results["checkpoint_path"] = str(checkpoint_path)
+    with open(output_file, "w") as f:
+        json.dump(results, f, indent=4)
+
+    logger.info("Saved evaluation results to %s", output_file)
+
+
+def main() -> None:
+    args = parse_args()
+    args.batch_size = 64
+    configure_logging(args.verbose)
+    res = benchmark_model(args, args.checkpoint_path)
+    save_results(args.output_dir, args.checkpoint_path, res)
+
+
+if __name__ == "__main__":
+    main()
